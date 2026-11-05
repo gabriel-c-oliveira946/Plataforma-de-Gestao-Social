@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { assistidosService } from '../services/assistidosService';
 import { VerFichaModal, Assistido } from '../components/VerFichaModal';
 export type { Assistido };
+import { exportAssistidosToCSV } from '../utils/exportUtils';
 import {
   isPendenteAvaliacao4Meses,
   hasAvaliacao4Meses,
@@ -677,162 +678,18 @@ export default function Dashboard() {
       return;
     }
 
-    const escapeCSV = (value: any): string => {
-      if (value === null || value === undefined) return '""';
-      const str = String(value).trim();
-      return `"${str.replace(/"/g, '""')}"`;
-    };
-
-    // 16 Colunas do Relatório conforme especificação
-    const headers = [
-      'ID Cadastral',
-      'Nome Completo',
-      'CPF',
-      'Telefone',
-      'Data de Ingresso',
-      'Status do Acompanhamento',
-      'Motivo da Evasão / Desistência',
-      'Bairro / Localidade',
-      'Escolaridade',
-      'Ocupação / Trabalho',
-      'Faixa de Renda (Renda Familiar / Própria)',
-      'Composição Familiar (Pessoas)',
-      'Filhos',
-      'Acesso à Internet',
-      'Condições de Saúde na Família',
-      'Oficina Pretendida',
-      'Pendente Avaliação 4 Meses? (Sim/Não)'
-    ];
-
-    const rows = filteredAssistidos.map((item) => {
-      // 1. ID Cadastral
-      const id = item.id || '';
-
-      // 2. Nome Completo
-      const nome = item.nome_completo || '';
-
-      // 3. CPF
-      const cpf = item.cpf || 'Não informado';
-
-      // 4. Telefone
-      const telefone = item.telefone || 'Não informado';
-
-      // 5. Data de Ingresso
-      const dataIngresso = formatDate(item.data_ingresso || item.created_at);
-
-      // 6. Status do Acompanhamento
-      const statusAcompanhamento = item.status_curso || 'Em Acompanhamento';
-      const motivoEvasao = getAssistidoMotivoEvasao(item) || 'Não se aplica';
-
-      // 7. Bairro / Localidade
-      const isRua =
-        item.tipo_moradia === 'Em situação de rua' ||
-        item.endereco === 'Em situação de rua';
-      const bairroLocalidade = isRua
-        ? 'Em situação de rua'
-        : item.bairro || item.endereco || item.bairro_cras || 'Não informado';
-
-      // 8. Escolaridade
-      const escolaridade = item.escolaridade || 'Não informada';
-
-      // 9. Ocupação / Trabalho
-      const ocupacao = item.profissao || item.atividade_remunerada || 'Não informada';
-
-      // 10. Faixa de Renda (Renda Familiar / Própria)
-      const faixaRenda = getAssistidoFaixaRenda(item);
-
-      // 11. Composição Familiar (Pessoas)
-      const composicao =
-        item.composicao_familiar !== undefined && item.composicao_familiar !== null
-          ? `${item.composicao_familiar} pessoa(s)`
-          : 'Não informada';
-
-      // 12. Filhos
-      const qtdFilhos = getAssistidoFilhos(item);
-      const filhos = qtdFilhos !== null ? `${qtdFilhos}` : 'Não informado';
-
-      // 13. Acesso à Internet
-      const internet = item.acesso_internet || 'Não informado';
-
-      // 14. Condições de Saúde na Família
-      const saudeList: string[] = [];
-      if (Array.isArray(item.doencas_cronicas_familia)) {
-        const valid = item.doencas_cronicas_familia.filter(
-          (d) =>
-            d &&
-            !d.toLowerCase().includes('nenhum') &&
-            !d.toLowerCase().includes('não informado')
-        );
-        saudeList.push(...valid);
-      } else if (
-        typeof item.doencas_cronicas_familia === 'string' &&
-        item.doencas_cronicas_familia.trim() &&
-        !item.doencas_cronicas_familia.toLowerCase().includes('nenhum')
-      ) {
-        saudeList.push(item.doencas_cronicas_familia.trim());
-      }
-      if (item.possui_deficiencia) {
-        const defStr =
-          Array.isArray(item.tipos_deficiencia) && item.tipos_deficiencia.length > 0
-            ? item.tipos_deficiencia.join(', ')
-            : 'Sim';
-        saudeList.push(`Deficiência: ${defStr}`);
-      }
-      const saudeFamilia =
-        saudeList.length > 0 ? saudeList.join('; ') : 'Nenhuma condição registrada';
-
-      // 15. Oficina Pretendida
-      const oficina = item.curso_pretendido || 'Nenhuma oficina vinculada';
-
-      // 16. Pendente Avaliação 4 Meses? (Sim/Não)
-      const pendente4Meses = isPendenteAvaliacao4Meses(item) ? 'Sim' : 'Não';
-
-      return [
-        escapeCSV(id),
-        escapeCSV(nome),
-        escapeCSV(cpf),
-        escapeCSV(telefone),
-        escapeCSV(dataIngresso),
-        escapeCSV(statusAcompanhamento),
-        escapeCSV(motivoEvasao),
-        escapeCSV(bairroLocalidade),
-        escapeCSV(escolaridade),
-        escapeCSV(ocupacao),
-        escapeCSV(faixaRenda),
-        escapeCSV(composicao),
-        escapeCSV(filhos),
-        escapeCSV(internet),
-        escapeCSV(saudeFamilia),
-        escapeCSV(oficina),
-        escapeCSV(pendente4Meses)
-      ];
-    });
-
-    // Delimitador ';' padrão para Excel em português com UTF-8 BOM (\uFEFF)
-    const csvContent =
-      '\uFEFF' +
-      [headers.map(escapeCSV).join(';'), ...rows.map((row) => row.join(';'))].join('\r\n');
-
-    // Nome no padrão: relatorio_assistidos_lar_harmonia_YYYY-MM-DD.csv
-    const today = new Date().toISOString().split('T')[0];
-    const filename = `relatorio_assistidos_lar_harmonia_${today}.csv`;
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    setSuccessMsg(
-      `Planilha (.csv) gerada com sucesso! ${filteredAssistidos.length} assistidos exportados no arquivo "${filename}".`
-    );
-    setTimeout(() => {
-      setSuccessMsg(null);
-    }, 4500);
+    const res = exportAssistidosToCSV(filteredAssistidos);
+    if (res.success) {
+      setSuccessMsg(
+        `Planilha (.csv) gerada com sucesso! ${res.count} assistidos exportados no arquivo "${res.filename}".`
+      );
+      setTimeout(() => {
+        setSuccessMsg(null);
+      }, 4500);
+    } else {
+      setErrorMsg('Erro ao gerar planilha de exportação.');
+      setTimeout(() => setErrorMsg(null), 4000);
+    }
   };
 
   // Badge de Status visual
