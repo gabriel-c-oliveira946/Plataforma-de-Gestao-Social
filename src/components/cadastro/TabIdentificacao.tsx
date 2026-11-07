@@ -235,6 +235,21 @@ export const TabIdentificacao: React.FC<TabIdentificacaoProps> = ({
             />
           </div>
 
+          {/* Cartão do SUS */}
+          <div className="md:col-span-4">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+              Número do Cartão do SUS <span className="text-[11px] font-normal text-slate-400 dark:text-slate-400">(Opcional)</span>
+            </label>
+            <input
+              type="text"
+              maxLength={18}
+              value={formData.cartao_sus || ''}
+              onChange={(e) => setFormData({ ...formData, cartao_sus: e.target.value.replace(/\D/g, '') })}
+              placeholder="000 0000 0000 0000"
+              className="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-600 outline-none transition"
+            />
+          </div>
+
           {/* Telefone */}
           <div className="md:col-span-4">
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1">
@@ -305,6 +320,43 @@ export const TabIdentificacao: React.FC<TabIdentificacaoProps> = ({
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Autorização de Uso de Imagem (Aba 1 - Identificação) */}
+          <div className="md:col-span-12 p-4 bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl space-y-2 mt-1">
+            <div className="flex items-center justify-between">
+              <span className="block text-xs font-bold text-emerald-950 dark:text-emerald-200 uppercase tracking-wider">
+                Autorização de Uso de Imagem
+              </span>
+              <span className="text-[10px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-700 uppercase">
+                Institucional FLH
+              </span>
+            </div>
+            <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed font-medium">
+              Autoriza o uso institucional de imagem e voz para divulgação e eventos da Fundação Lar Harmonia.
+            </p>
+            <div className="flex gap-6 pt-1">
+              <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white cursor-pointer">
+                <input
+                  type="radio"
+                  name="autoriza_imagem"
+                  checked={formData.autoriza_imagem !== 'Não'}
+                  onChange={() => setFormData({ ...formData, autoriza_imagem: 'Sim' })}
+                  className="text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                />
+                Sim, autorizo o uso de imagem
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white cursor-pointer">
+                <input
+                  type="radio"
+                  name="autoriza_imagem"
+                  checked={formData.autoriza_imagem === 'Não'}
+                  onChange={() => setFormData({ ...formData, autoriza_imagem: 'Não' })}
+                  className="text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                />
+                Não autorizo
+              </label>
+            </div>
           </div>
         </div>
       </div>

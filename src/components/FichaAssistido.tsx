@@ -1,5 +1,6 @@
 import React from 'react';
 import { Assistido } from '../types/assistido';
+import { MembroFamilia } from '../types/cadastro';
 import { getAssistidoMotivoEvasao } from '../utils/avaliacao4Meses';
 import {
   User,
@@ -222,6 +223,18 @@ export const FichaAssistido: React.FC<FichaAssistidoProps> = ({
               <span className="font-mono">{assistido.rg || 'Não informado'}</span>
             </div>
             <div>
+              <span className="text-slate-500 block text-[10px]">Cartão do SUS:</span>
+              <span className="font-mono">{assistido.cartao_sus || 'Não informado'}</span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[10px]">Autorização de Uso de Imagem:</span>
+              <span className="font-semibold text-slate-800">
+                {assistido.autoriza_imagem === false || assistido.autoriza_imagem === 'Não'
+                  ? 'Não autorizado'
+                  : 'Autorizado institucionalmente'}
+              </span>
+            </div>
+            <div>
               <span className="text-slate-500 block text-[10px]">Data de Nascimento / Idade:</span>
               <span>
                 {formatDate(assistido.data_nascimento)}
@@ -352,6 +365,52 @@ export const FichaAssistido: React.FC<FichaAssistidoProps> = ({
             <span className="text-slate-500 block text-[10px]">Rede de Apoio:</span>
             <span>{assistido.rede_apoio || 'Não informada'}</span>
           </div>
+
+          {/* Tabela de Membros do Núcleo Familiar e Dependentes */}
+          {(() => {
+            let membros: MembroFamilia[] = [];
+            if (Array.isArray(assistido.membros_familia) && assistido.membros_familia.length > 0) {
+              membros = assistido.membros_familia;
+            } else if (assistido.expectativa_curso) {
+              const match = assistido.expectativa_curso.match(/\[Membros da Fam[íi]lia:\s*(\[.*?\])\]/i);
+              if (match && match[1]) {
+                try {
+                  const parsed = JSON.parse(match[1]);
+                  if (Array.isArray(parsed)) membros = parsed;
+                } catch {}
+              }
+            }
+
+            if (membros.length === 0) return null;
+
+            return (
+              <div className="col-span-3 mt-2 pt-2 border-t border-slate-200">
+                <span className="text-slate-800 font-bold block text-[10px] uppercase mb-1">
+                  Membros do Núcleo Familiar e Dependentes ({membros.length}):
+                </span>
+                <table className="w-full text-left text-[10px] border border-slate-300">
+                  <thead className="bg-slate-100 text-slate-800 border-b border-slate-300">
+                    <tr>
+                      <th className="p-1 border-r border-slate-200 font-bold">Nome do Membro</th>
+                      <th className="p-1 border-r border-slate-200 w-24 font-bold">Idade / Nasc.</th>
+                      <th className="p-1 border-r border-slate-200 w-28 font-bold">Vínculo</th>
+                      <th className="p-1 w-36 font-bold">Projeto / Oficina</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {membros.map((m, idx) => (
+                      <tr key={m.id || idx}>
+                        <td className="p-1 border-r border-slate-200 font-semibold">{m.nome_membro}</td>
+                        <td className="p-1 border-r border-slate-200">{m.data_nasc_idade}</td>
+                        <td className="p-1 border-r border-slate-200">{m.vinculo}</td>
+                        <td className="p-1 font-medium">{m.projeto_oficina}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

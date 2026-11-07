@@ -13,6 +13,8 @@ import Header from './components/Header';
 import CadastrarAssistido from './pages/CadastrarAssistido';
 import Dashboard from './pages/Dashboard';
 import GerenciarEquipe from './pages/GerenciarEquipe';
+import HomeSeletor from './pages/HomeSeletor';
+import GerenciarVoluntarios from './pages/GerenciarVoluntarios';
 
 export default function App() {
   return (
@@ -22,11 +24,32 @@ export default function App() {
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/modulos" element={
+                <ProtectedRoute>
+                  <HomeSeletor />
+                </ProtectedRoute>
+              } />
               <Route path="/dashboard" element={
                 <ProtectedRoute>
                   <>
                     <Header />
                     <Dashboard />
+                  </>
+                </ProtectedRoute>
+              } />
+              <Route path="/voluntarios" element={
+                <ProtectedRoute>
+                  <>
+                    <Header />
+                    <GerenciarVoluntarios />
+                  </>
+                </ProtectedRoute>
+              } />
+              <Route path="/gerenciar-voluntarios" element={
+                <ProtectedRoute>
+                  <>
+                    <Header />
+                    <GerenciarVoluntarios />
                   </>
                 </ProtectedRoute>
               } />
@@ -54,7 +77,7 @@ export default function App() {
                   </>
                 </ProtectedRoute>
               } />
-              <Route path="/" element={<Navigate to="/dashboard" />} />
+              <Route path="/" element={<Navigate to="/modulos" />} />
             </Routes>
           </BrowserRouter>
         </ToastProvider>

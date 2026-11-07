@@ -3,7 +3,10 @@ import { useAuth } from '../context/AuthContext';
 import { getOperadorInfo } from '../utils/equipe';
 import {
   isPendenteAvaliacao4Meses,
+  isPendenteEntrevistaDomiciliar1Ano,
   hasAvaliacao4Meses,
+  hasEntrevistaDomiciliar1Ano,
+  getEntrevistaDomiciliar1Ano,
   isStatusAtivo,
   getDiasIngresso,
   getAvaliacao4Meses,
@@ -12,7 +15,10 @@ import {
 } from '../utils/avaliacao4Meses';
 export {
   isPendenteAvaliacao4Meses,
+  isPendenteEntrevistaDomiciliar1Ano,
   hasAvaliacao4Meses,
+  hasEntrevistaDomiciliar1Ano,
+  getEntrevistaDomiciliar1Ano,
   isStatusAtivo,
   getDiasIngresso,
   getAvaliacao4Meses,
@@ -64,7 +70,8 @@ import { assistidosService } from '../services/assistidosService';
 import { useToast } from '../context/ToastContext';
 import {
   CadastroFormData,
-  INITIAL_CADASTRO_FORM
+  INITIAL_CADASTRO_FORM,
+  MembroFamilia
 } from '../types/cadastro';
 import { formatCPF, formatRG } from '../utils/masks';
 import { TabIdentificacao } from './cadastro/TabIdentificacao';
@@ -93,6 +100,8 @@ export interface Assistido {
   nome_completo: string;
   rg?: string | null;
   cpf?: string | null;
+  cartao_sus?: string | null;
+  autoriza_imagem?: 'Sim' | 'Não' | boolean | string | null;
   data_nascimento?: string | null;
   idade?: number | null;
   raca_cor?: string | null;
@@ -106,6 +115,7 @@ export interface Assistido {
   bairro_cras?: string | null;
   composicao_familiar?: number | null;
   quantidade_filhos?: number | null;
+  membros_familia?: MembroFamilia[] | null;
   atividade_remunerada?: string | null;
   profissao?: string | null;
   acesso_internet?: string | null;
@@ -533,6 +543,19 @@ export function convertAssistidoToFormData(assistido: Assistido): CadastroFormDa
     idade: assistido.idade ?? '',
     rg: assistido.rg || '',
     cpf: assistido.cpf || '',
+    cartao_sus:
+      (assistido as any).cartao_sus ||
+      (assistido.expectativa_curso
+        ? assistido.expectativa_curso.match(/Cart[ãa]o SUS:\s*([^|]+)/i)?.[1]?.trim()
+        : null) ||
+      '',
+    autoriza_imagem:
+      (assistido as any).autoriza_imagem === false ||
+      (assistido as any).autoriza_imagem === 'Não' ||
+      (assistido.expectativa_curso &&
+        /Autoriza[çc][ãa]o de Imagem:\s*Não/i.test(assistido.expectativa_curso))
+        ? 'Não'
+        : 'Sim',
     telefone: assistido.telefone || '',
     escolaridade: assistido.escolaridade || 'Não informado',
     estado_civil: assistido.estado_civil || 'Não informado',
@@ -665,7 +688,21 @@ export function convertAssistidoToFormData(assistido: Assistido): CadastroFormDa
     percepcao_flh_outro: percepcaoOutro,
     interesse_outras_oficinas: outrasOficinas,
     nao_tem_interesse_outras_oficinas: naoTemInteresse,
-    status_atendimento: assistido.status_curso || 'Em Acompanhamento'
+    status_atendimento: assistido.status_curso || 'Em Acompanhamento',
+    membros_familia: Array.isArray(assistido.membros_familia) && assistido.membros_familia.length > 0
+      ? assistido.membros_familia
+      : (() => {
+          if (assistido.expectativa_curso) {
+            const match = assistido.expectativa_curso.match(/\[Membros da Fam[íi]lia:\s*(\[.*?\])\]/i);
+            if (match && match[1]) {
+              try {
+                const parsed = JSON.parse(match[1]);
+                if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+              } catch {}
+            }
+          }
+          return [];
+        })()
   };
 }
 
@@ -676,7 +713,7 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
   isAdmin,
   onAssistidoUpdated
 }) => {
-  const { user, canEdit, canEvaluate, canDelete } = useAuth();
+  const { user, profile, displayName, canEdit, canEvaluate, canDelete } = useAuth();
   const toast = useToast();
   const canUserDelete = isAdmin || canDelete;
   const [showDirectConfirmModal, setShowDirectConfirmModal] = useState(false);
@@ -791,7 +828,7 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
 
   // Aba ativa na Visualização (Modo Leitura)
   const [activeTab, setActiveTab] = useState<
-    'geral' | 'identificacao' | 'trabalho' | 'saude' | 'oficina' | 'avaliacao'
+    'geral' | 'identificacao' | 'trabalho' | 'moradia' | 'saude' | 'oficina' | 'avaliacao'
   >('geral');
 
   // Aba ativa no Modo Edição (1 a 5)
@@ -860,6 +897,110 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
       setIsEditingAvaliacao(true);
     }
   }, [assistido]);
+
+  // Estados para Entrevista Domiciliar (1 Ano)
+  const isPendente1Ano = useMemo(
+    () => isPendenteEntrevistaDomiciliar1Ano(assistido),
+    [assistido]
+  );
+
+  const existingEntrevista1Ano = useMemo(
+    () => getEntrevistaDomiciliar1Ano(assistido),
+    [assistido.expectativa_curso]
+  );
+
+  const [isEntrevistaModalOpen, setIsEntrevistaModalOpen] = useState<boolean>(false);
+  const [dataVisita, setDataVisita] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [tecnicoResponsavel, setTecnicoResponsavel] = useState<string>(() => profile?.nome || displayName || 'Serviço Social');
+  const [evolucaoSituacao, setEvolucaoSituacao] = useState<string>('Mantém / Sem alterações significativas');
+  const [observacoesEvolucaoLar, setObservacoesEvolucaoLar] = useState<string>('');
+  const [statusPosVisita, setStatusPosVisita] = useState<
+    'Manter em Acompanhamento' | 'Pausado' | 'Desligado'
+  >('Manter em Acompanhamento');
+  const [savingEntrevista, setSavingEntrevista] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (existingEntrevista1Ano) {
+      setDataVisita(existingEntrevista1Ano.data_visita);
+      setTecnicoResponsavel(existingEntrevista1Ano.tecnico_responsavel);
+      setEvolucaoSituacao(existingEntrevista1Ano.evolucao_situacao || 'Mantém / Sem alterações significativas');
+      setObservacoesEvolucaoLar(existingEntrevista1Ano.observacoes_evolucao_lar || existingEntrevista1Ano.parecer_observacoes || '');
+      setStatusPosVisita(
+        existingEntrevista1Ano.status_pos_visita?.includes('Deslig')
+          ? 'Desligado'
+          : existingEntrevista1Ano.status_pos_visita?.includes('Paus')
+          ? 'Pausado'
+          : 'Manter em Acompanhamento'
+      );
+    }
+  }, [existingEntrevista1Ano]);
+
+  const handleSaveEntrevista = async () => {
+    if (!observacoesEvolucaoLar.trim()) {
+      toast.error('Observações Obrigatórias', 'Por favor, descreva as observações da evolução do lar.');
+      return;
+    }
+    setSavingEntrevista(true);
+    try {
+      const dataFormatada = dataVisita;
+      const tec = tecnicoResponsavel.trim() || 'Serviço Social';
+      const statusTxt = statusPosVisita;
+      const evolucaoTxt = evolucaoSituacao;
+      const obsLarTxt = observacoesEvolucaoLar.trim();
+
+      const blocoEntrevista = `[Entrevista Domiciliar 1 Ano - ${dataFormatada}] Responsável: ${tec} | Situação Familiar: ${evolucaoTxt} | Status: ${statusTxt} | Observações da Evolução do Lar: ${obsLarTxt}`;
+
+      const rawExpectativa = assistido.expectativa_curso || '';
+      const novaExpectativa = rawExpectativa ? `${rawExpectativa} | ${blocoEntrevista}` : blocoEntrevista;
+
+      const currentServicos = Array.isArray(assistido.servicos_acompanhamento)
+        ? [...assistido.servicos_acompanhamento]
+        : [];
+      if (!currentServicos.includes('Entrevista Domiciliar (1 Ano)')) {
+        currentServicos.push('Entrevista Domiciliar (1 Ano)');
+      }
+
+      let novoStatusCurso = assistido.status_curso || 'Ativo / Em Acompanhamento';
+      if (statusPosVisita === 'Desligado') {
+        novoStatusCurso = 'Desligado';
+      } else if (statusPosVisita === 'Pausado') {
+        novoStatusCurso = 'Pausado';
+      } else if (statusPosVisita === 'Manter em Acompanhamento') {
+        novoStatusCurso = 'Ativo / Em Acompanhamento';
+      }
+
+      let authUserId: string | null = null;
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (authData?.user?.id) authUserId = authData.user.id;
+      } catch {
+        authUserId = null;
+      }
+
+      const updatePayload: Record<string, any> = {
+        expectativa_curso: novaExpectativa,
+        servicos_acompanhamento: currentServicos,
+        status_curso: novoStatusCurso
+      };
+
+      if (authUserId) {
+        updatePayload.atualizado_por = authUserId;
+      }
+
+      const updated = await assistidosService.update(assistido.id, updatePayload);
+      onAssistidoUpdated(updated);
+      setIsEntrevistaModalOpen(false);
+      toast.success(
+        'Entrevista Domiciliar Registrada!',
+        'A entrevista de 1 Ano foi salva com sucesso e a pendência de 1 ano foi removida.'
+      );
+    } catch (err: any) {
+      console.error('Erro ao salvar entrevista domiciliar:', err);
+      toast.error('Erro ao salvar entrevista', err?.message || 'Conexão falhou.');
+    } finally {
+      setSavingEntrevista(false);
+    }
+  };
 
   // Manipulação de Foto no Modo de Edição
   const [fotoFile, setFotoFile] = useState<File | null>(null);
@@ -1237,6 +1378,22 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
         expectativasList.push(`Motivo da Evasão: ${editFormData.motivo_evasao.trim()}`);
       }
 
+      if (editFormData.cartao_sus?.trim()) {
+        expectativasList.push(`Cartão SUS: ${editFormData.cartao_sus.trim()}`);
+      }
+      expectativasList.push(`Autorização de Imagem: ${editFormData.autoriza_imagem === 'Não' ? 'Não' : 'Sim'}`);
+
+      if (Array.isArray(editFormData.membros_familia) && editFormData.membros_familia.length > 0) {
+        expectativasList.push(`[Membros da Família: ${JSON.stringify(editFormData.membros_familia)}]`);
+      }
+
+      // Preservar registro da Entrevista Domiciliar de 1 Ano se já existente
+      const existingEntrevista = getEntrevistaDomiciliar1Ano(assistido);
+      if (existingEntrevista) {
+        const blocoEntrevista = `[Entrevista Domiciliar 1 Ano - ${existingEntrevista.data_visita}] Técnico: ${existingEntrevista.tecnico_responsavel} | Situação: ${existingEntrevista.evolucao_situacao} | Status: ${existingEntrevista.status_pos_visita} | Parecer: ${existingEntrevista.parecer_observacoes}`;
+        expectativasList.push(blocoEntrevista);
+      }
+
       // Preservar registro da Avaliação de 4 Meses se já existente
       if (existingAvaliacao) {
         const evMotive =
@@ -1338,6 +1495,9 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
         nome_completo: editFormData.nome_completo.trim(),
         rg: cleanRg,
         cpf: cleanCpf,
+        cartao_sus: editFormData.cartao_sus?.trim() || null,
+        autoriza_imagem: editFormData.autoriza_imagem === 'Sim' || (editFormData.autoriza_imagem as any) === true,
+        em_situacao_rua: Boolean(editFormData.em_situacao_rua),
         data_nascimento: editFormData.data_nascimento || null,
         idade: editFormData.idade === '' ? null : Number(editFormData.idade),
         raca_cor: editFormData.raca_cor || 'Não informado',
@@ -1365,6 +1525,9 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
 
         // Aba 3 - Moradia e Família
         composicao_familiar: finalComposicaoFamiliar,
+        quantidade_filhos:
+          editFormData.quantidade_filhos !== '' ? Number(editFormData.quantidade_filhos) : 0,
+        membros_familia: editFormData.membros_familia || [],
         acesso_internet: editFormData.acesso_internet,
         tipo_moradia: tipoMoradiaFinal,
         servicos_basicos_regulares: editFormData.servicos_basicos_gerais === 'Sim',
@@ -1848,6 +2011,66 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
     return { participou: false, texto: 'Não participou de cursos anteriores' };
   })();
 
+  // Membros do Núcleo Familiar e Dependentes
+  const membrosFamilia: MembroFamilia[] = useMemo(() => {
+    if (Array.isArray(assistido.membros_familia) && assistido.membros_familia.length > 0) {
+      return assistido.membros_familia;
+    }
+    if (assistido.expectativa_curso) {
+      const match = assistido.expectativa_curso.match(/\[Membros da Fam[íi]lia:\s*(\[.*?\])\]/i);
+      if (match && match[1]) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch {}
+      }
+    }
+    return [];
+  }, [assistido.membros_familia, assistido.expectativa_curso]);
+
+  const getProjectBadge = (projeto?: string) => {
+    if (!projeto || projeto === 'Nenhuma / Não Participa') {
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200">
+          Não participa
+        </span>
+      );
+    }
+    if (projeto === 'Crescer Preciso') {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+          🌟 Crescer Preciso
+        </span>
+      );
+    }
+    if (projeto === 'Balé') {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-pink-100 text-pink-900 border border-pink-300">
+          🩰 Balé
+        </span>
+      );
+    }
+    if (projeto === 'Capoeira') {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
+          🥋 Capoeira
+        </span>
+      );
+    }
+    if (projeto === 'Informática') {
+      return (
+        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-blue-100 text-blue-900 border border-blue-300">
+          💻 Informática
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-purple-100 text-purple-900 border border-purple-300">
+        {projeto}
+      </span>
+    );
+  };
+
   // Configuração das 5 Abas no Modo de Edição
   const editTabsList = [
     { id: 1, title: '1. Identificação & Foto', icon: User },
@@ -1857,10 +2080,207 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
     { id: 5, title: '5. Motivações & FLH', icon: GraduationCap }
   ];
 
+  const renderFamilyMembersSummaryCard = () => (
+    <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-2xs space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-emerald-600" />
+          <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider font-heading">
+            Núcleo Familiar & Projetos FLH
+          </h4>
+          <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+            {membrosFamilia.length} {membrosFamilia.length === 1 ? 'membro' : 'membros'}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('moradia')}
+          className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg text-xs font-bold transition border border-gray-200 cursor-pointer self-start sm:self-auto"
+        >
+          <span>Ver Tabela Completa (Aba 3)</span>
+          <ArrowRight className="w-3.5 h-3.5 text-gray-500" />
+        </button>
+      </div>
+
+      {membrosFamilia.length > 0 ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          {membrosFamilia.map((membro, mIdx) => (
+            <div
+              key={membro.id || mIdx}
+              className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2 flex flex-col justify-between hover:border-emerald-200 transition"
+            >
+              <div className="flex items-start gap-2.5">
+                <span className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 shadow-2xs">
+                  {membro.nome_membro ? membro.nome_membro.charAt(0).toUpperCase() : 'F'}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h5 className="text-xs font-bold text-slate-900 truncate">
+                    {membro.nome_membro || 'Não informado'}
+                  </h5>
+                  <div className="flex flex-wrap items-center gap-1 mt-1">
+                    <span className="px-2 py-0.5 bg-white text-slate-700 rounded font-semibold text-[10px] border border-slate-200">
+                      {membro.vinculo || 'Dependente'}
+                    </span>
+                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-900 rounded font-medium text-[10px] border border-indigo-200">
+                      {membro.data_nasc_idade || 'Idade N/I'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between gap-1">
+                <span className="text-[10px] text-gray-500 font-semibold uppercase">Projeto/Oficina:</span>
+                <div>{getProjectBadge(membro.projeto_oficina)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="p-4 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-center">
+          <Users className="w-7 h-7 text-gray-400 mx-auto mb-1.5 opacity-60" />
+          <p className="text-xs font-semibold text-gray-600">
+            Nenhum membro ou dependente individual cadastrado para este núcleo familiar.
+          </p>
+          <p className="text-[11px] text-gray-400 mt-0.5">
+            Composição declarada: {assistido.composicao_familiar || 1} pessoa(s), {assistido.quantidade_filhos || 0} filho(s).
+          </p>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditActiveTab(3);
+                setIsEditingData(true);
+              }}
+              className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-100 text-emerald-700 rounded-lg text-xs font-bold transition border border-gray-300 shadow-2xs cursor-pointer"
+            >
+              + Adicionar Membros da Família (Aba 3)
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderFamilyMembersSection = (showMoradiaSummary: boolean = false) => (
+    <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-2xs space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
+        <div className="flex items-center gap-2">
+          <Users className="w-4 h-4 text-emerald-600" />
+          <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider font-heading">
+            Membros do Núcleo Familiar e Dependentes
+          </h4>
+          <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+            {membrosFamilia.length} {membrosFamilia.length === 1 ? 'membro' : 'membros'}
+          </span>
+        </div>
+
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => {
+              setEditActiveTab(3);
+              setIsEditingData(true);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs font-bold transition border border-emerald-200 cursor-pointer self-start sm:self-auto"
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+            Gerenciar / Adicionar Membros (Aba 3)
+          </button>
+        )}
+      </div>
+
+      {showMoradiaSummary && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80 text-xs">
+          <div>
+            <span className="text-gray-400 font-semibold block text-[10px] uppercase">Tipo de Moradia</span>
+            <span className="font-bold text-gray-800">{moradiaParsed.tipo}</span>
+          </div>
+          <div>
+            <span className="text-gray-400 font-semibold block text-[10px] uppercase">Composição Domiciliar</span>
+            <span className="font-bold text-gray-800">{assistido.composicao_familiar || 1} pessoas</span>
+          </div>
+          <div>
+            <span className="text-gray-400 font-semibold block text-[10px] uppercase">Filhos Dependentes</span>
+            <span className="font-bold text-pink-700">
+              {moradiaParsed.filhos !== ''
+                ? `${moradiaParsed.filhos} filhos`
+                : assistido.quantidade_filhos !== undefined && assistido.quantidade_filhos !== null
+                ? `${assistido.quantidade_filhos} filhos`
+                : 'Não informado'}
+            </span>
+          </div>
+          <div>
+            <span className="text-gray-400 font-semibold block text-[10px] uppercase">Internet Residencial</span>
+            <span className="font-bold text-gray-800">{assistido.acesso_internet || 'Não informado'}</span>
+          </div>
+        </div>
+      )}
+
+      {membrosFamilia.length > 0 ? (
+        <div className="overflow-x-auto rounded-xl border border-gray-200">
+          <table className="w-full text-left text-xs border-collapse">
+            <thead className="bg-gray-50/80 text-gray-700 border-b border-gray-200 text-[11px] uppercase tracking-wider font-semibold">
+              <tr>
+                <th className="py-2.5 px-3.5">Nome do Membro</th>
+                <th className="py-2.5 px-3.5">Idade / Nasc.</th>
+                <th className="py-2.5 px-3.5">Vínculo com Responsável</th>
+                <th className="py-2.5 px-3.5">Projeto / Oficina FLH</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 bg-white">
+              {membrosFamilia.map((membro, mIdx) => (
+                <tr key={membro.id || mIdx} className="hover:bg-gray-50/60 transition">
+                  <td className="py-2.5 px-3.5 font-bold text-gray-900 flex items-center gap-2">
+                    <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-[10px] font-bold shrink-0">
+                      {membro.nome_membro ? membro.nome_membro.charAt(0).toUpperCase() : 'F'}
+                    </span>
+                    <span>{membro.nome_membro || 'Não informado'}</span>
+                  </td>
+                  <td className="py-2.5 px-3.5 text-gray-700 font-medium">
+                    {membro.data_nasc_idade || 'Não informada'}
+                  </td>
+                  <td className="py-2.5 px-3.5 text-gray-800 font-semibold">
+                    {membro.vinculo || 'Não informado'}
+                  </td>
+                  <td className="py-2.5 px-3.5">
+                    {getProjectBadge(membro.projeto_oficina)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="p-4 bg-gray-50 rounded-xl border border-dashed border-gray-200 text-center">
+          <Users className="w-7 h-7 text-gray-400 mx-auto mb-1.5 opacity-60" />
+          <p className="text-xs font-semibold text-gray-600">
+            Nenhum membro ou dependente individual cadastrado para este núcleo familiar.
+          </p>
+          <p className="text-[11px] text-gray-400 mt-0.5">
+            Composição geral informada: {assistido.composicao_familiar || 1} pessoa(s), {assistido.quantidade_filhos || 0} filho(s).
+          </p>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={() => {
+                setEditActiveTab(3);
+                setIsEditingData(true);
+              }}
+              className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-100 text-emerald-700 rounded-lg text-xs font-bold transition border border-gray-300 shadow-2xs cursor-pointer"
+            >
+              + Adicionar Membros da Família (Aba 3)
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <>
       <div className="no-print fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
-        <div className="bg-white dark:bg-slate-900 rounded-none sm:rounded-3xl max-w-5xl w-full h-[100dvh] sm:h-auto sm:max-h-[92vh] overflow-hidden flex flex-col shadow-2xl border-0 sm:border border-gray-100 dark:border-slate-800">
+        <div className="bg-white dark:bg-slate-900 rounded-none sm:rounded-3xl max-w-6xl w-full h-[100dvh] sm:h-auto sm:max-h-[92vh] overflow-hidden flex flex-col shadow-2xl border-0 sm:border border-gray-100 dark:border-slate-800">
         
         {/* Cabeçalho do Modal Compacto e Responsivo */}
         <div className="px-3 sm:px-6 py-2.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex flex-col gap-2.5 bg-slate-50/80 dark:bg-slate-800/80 flex-shrink-0">
@@ -1912,6 +2332,29 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
                   {renderStatusBadge(
                     isEditingData ? editFormData.status_atendimento : assistido.status_curso
                   )}
+                  {isEditingData ? (
+                    editFormData.autoriza_imagem === 'Não' || (editFormData.autoriza_imagem as any) === false ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-100 text-red-800 dark:bg-red-950/90 dark:text-red-300 rounded-full text-xs font-extrabold border border-red-300 dark:border-red-700 shadow-2xs">
+                        <span>🚫</span>
+                        <span>NÃO Autoriza Uso de Imagem</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 rounded-full text-xs font-bold border border-emerald-300 dark:border-emerald-700 shadow-2xs">
+                        <span>📷</span>
+                        <span>Autoriza Uso de Imagem</span>
+                      </span>
+                    )
+                  ) : (assistido.autoriza_imagem === 'Não' || assistido.autoriza_imagem === false || (assistido.expectativa_curso && /Autoriza[çc][ãa]o de Imagem:\s*Não/i.test(assistido.expectativa_curso))) ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-100 text-red-800 dark:bg-red-950/90 dark:text-red-300 rounded-full text-xs font-extrabold border border-red-300 dark:border-red-700 shadow-2xs">
+                      <span>🚫</span>
+                      <span>NÃO Autoriza Uso de Imagem</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 rounded-full text-xs font-bold border border-emerald-300 dark:border-emerald-700 shadow-2xs">
+                      <span>📷</span>
+                      <span>Autoriza Uso de Imagem</span>
+                    </span>
+                  )}
                   {isEditingData && (
                     <span className="px-2 py-0.5 bg-amber-600 text-white text-[9px] sm:text-[10px] font-black rounded-full uppercase tracking-wider shadow-2xs">
                       Modo Edição Ativo
@@ -1938,6 +2381,12 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
                     </span>
                   </div>
                 )}
+                {isPendente1Ano && (
+                  <div className="mt-1.5 flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700/80 rounded-lg text-xs font-bold text-amber-950 dark:text-amber-200 w-fit shadow-2xs animate-fadeIn">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span>Pendente Entrevista Domiciliar (1 Ano)</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1954,27 +2403,57 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
           {/* Linha de Ações Rápidas (Organizada em linha no mobile para poupar espaço) */}
           <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-none w-full">
             {!isEditingData ? (
-              <div className="flex items-center gap-2 w-full">
-                {canEvaluate && (
+              <div className="flex flex-wrap items-center gap-2 w-full">
+                {/* Botão de Acesso Direto às Avaliações & Entrevistas no Topo */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('avaliacao')}
+                  className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer ${
+                    activeTab === 'avaliacao'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : isPendente4Meses || isPendente1Ano
+                      ? 'bg-amber-500 hover:bg-amber-600 text-white font-extrabold animate-pulse'
+                      : 'bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700'
+                  }`}
+                  title="Acessar painel de Avaliações de 4 Meses e Entrevistas Domiciliares de 1 Ano"
+                >
+                  <Award className="w-4 h-4 shrink-0 text-amber-500 dark:text-amber-300" />
+                  <span className="truncate">Avaliações & Entrevistas</span>
+                  {isPendente4Meses || isPendente1Ano ? (
+                    <span className="bg-amber-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold shrink-0">
+                      Pendente
+                    </span>
+                  ) : existingAvaliacao || existingEntrevista1Ano ? (
+                    <span className="bg-emerald-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold shrink-0">
+                      Realizada
+                    </span>
+                  ) : null}
+                </button>
+
+                {canEvaluate && isPendente1Ano && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEntrevistaModalOpen(true)}
+                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl text-xs font-extrabold bg-amber-600 hover:bg-amber-700 text-white animate-pulse transition shadow-xs cursor-pointer"
+                    title="Registrar Visita/Entrevista Domiciliar de 1 Ano Pendente"
+                  >
+                    <Home className="w-3.5 h-3.5 shrink-0 text-white" />
+                    <span className="truncate">Registrar Entrevista Domiciliar (1 Ano)</span>
+                  </button>
+                )}
+
+                {canEvaluate && isPendente4Meses && (
                   <button
                     type="button"
                     onClick={() => {
                       setActiveTab('avaliacao');
                       setIsEditingAvaliacao(true);
                     }}
-                    className={`flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer ${
-                      isPendente4Meses
-                        ? 'bg-amber-600 hover:bg-amber-700 text-white animate-pulse'
-                        : 'bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800'
-                    }`}
-                    title="Registrar Avaliação de 4 Meses do Assistido"
+                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl text-xs font-extrabold bg-amber-600 hover:bg-amber-700 text-white animate-pulse transition shadow-xs cursor-pointer"
+                    title="Registrar Avaliação de 4 Meses Pendente"
                   >
-                    <Sparkles className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">
-                      {existingAvaliacao
-                        ? 'Atualizar Avaliação 4M'
-                        : 'Avaliação 4 Meses'}
-                    </span>
+                    <Sparkles className="w-3.5 h-3.5 shrink-0 text-white" />
+                    <span className="truncate">Avaliação 4 Meses</span>
                   </button>
                 )}
 
@@ -1982,10 +2461,10 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
                   <button
                     type="button"
                     onClick={handleStartEdit}
-                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3 py-1.5 sm:py-2 bg-emerald-700 hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
-                    title="Editar informações completas nas 5 Abas"
+                    className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-xl text-xs font-black transition-all shadow-md hover:shadow-lg border border-emerald-500 ring-2 ring-emerald-500/20 cursor-pointer transform hover:-translate-y-0.5"
+                    title="Editar informações completas nas 5 Abas do cadastro"
                   >
-                    <Edit3 className="w-3.5 h-3.5 shrink-0" />
+                    <Edit3 className="w-4 h-4 shrink-0 text-white" />
                     <span>Editar Ficha (5 Abas)</span>
                   </button>
                 ) : (
@@ -1997,16 +2476,6 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
                     Consulta (Recepção)
                   </span>
                 )}
-
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  title="Imprimir Ficha Completa A4"
-                  className="hidden sm:inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-emerald-700 dark:hover:text-emerald-400 rounded-xl transition border border-slate-300 dark:border-slate-700 shadow-2xs cursor-pointer"
-                >
-                  <Printer className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
-                  <span>Imprimir Ficha</span>
-                </button>
               </div>
             ) : (
               <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -2050,11 +2519,11 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
         {/* BARRA DE NAVEGAÇÃO DE ABAS */}
         {!isEditingData ? (
           /* Abas do Modo de Visualização / Leitura */
-          <div className="px-3 sm:px-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800 overflow-x-auto whitespace-nowrap scrollbar-none flex items-center gap-1.5 py-1.5 sm:py-2 flex-shrink-0">
+          <div className="px-3 sm:px-6 pr-6 sm:pr-8 border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800 overflow-x-auto whitespace-nowrap scroll-smooth flex items-center gap-1 sm:gap-1.5 py-1.5 sm:py-2 flex-shrink-0">
             <button
               type="button"
               onClick={() => setActiveTab('geral')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              className={`shrink-0 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                 activeTab === 'geral'
                   ? 'bg-emerald-700 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
@@ -2065,7 +2534,7 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('identificacao')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              className={`shrink-0 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                 activeTab === 'identificacao'
                   ? 'bg-emerald-700 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
@@ -2076,7 +2545,7 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('trabalho')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              className={`shrink-0 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                 activeTab === 'trabalho'
                   ? 'bg-emerald-700 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
@@ -2086,48 +2555,36 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
             </button>
             <button
               type="button"
+              onClick={() => setActiveTab('moradia')}
+              className={`shrink-0 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+                activeTab === 'moradia'
+                  ? 'bg-emerald-700 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
+              }`}
+            >
+              3. Moradia & Composição Familiar
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveTab('saude')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              className={`shrink-0 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                 activeTab === 'saude'
                   ? 'bg-emerald-700 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
               }`}
             >
-              3. Saúde & Vulnerabilidades
+              4. Saúde & Vulnerabilidades
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('oficina')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              className={`shrink-0 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
                 activeTab === 'oficina'
                   ? 'bg-emerald-700 text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
               }`}
             >
-              4. Oficinas & Percepção FLH
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('avaliacao')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'avaliacao'
-                  ? 'bg-emerald-700 text-white shadow-xs'
-                  : isPendente4Meses
-                  ? 'text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 border border-amber-200 dark:border-amber-800 font-extrabold'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
-              }`}
-            >
-              <Award className="w-3.5 h-3.5 text-amber-500" />
-              <span>5. Avaliação 4 Meses</span>
-              {isPendente4Meses ? (
-                <span className="bg-amber-600 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                  Pendente
-                </span>
-              ) : existingAvaliacao ? (
-                <span className="bg-emerald-700 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                  Realizada
-                </span>
-              ) : null}
+              5. Oficinas & Percepção FLH
             </button>
           </div>
         ) : (
@@ -2334,6 +2791,61 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
                     </div>
                   )}
 
+                  {/* Banner de Aviso: Entrevista Domiciliar (1 Ano) Pendente */}
+                  {isPendente1Ano && (
+                    <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-pulse">
+                      <div className="flex items-start gap-3">
+                        <Home className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider font-heading flex items-center gap-1.5">
+                            <AlertTriangle className="w-4 h-4 text-amber-600" />
+                            Pendente Entrevista Domiciliar (1 Ano / 12 Meses)
+                          </h4>
+                          <p className="text-xs text-amber-800 mt-0.5">
+                            Assistido com cadastro ativo há mais de 365 dias (12 meses). É necessário realizar e registrar a visita domiciliar de acompanhamento.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsEntrevistaModalOpen(true)}
+                        className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition shadow-xs shrink-0 cursor-pointer"
+                      >
+                        <Home className="w-4 h-4" />
+                        Registrar Entrevista Domiciliar
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Banner de Entrevista Domiciliar já Realizada */}
+                  {existingEntrevista1Ano && (
+                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                      <div className="flex items-start sm:items-center gap-2.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5 sm:mt-0" />
+                        <div>
+                          <span className="font-bold text-emerald-900 block sm:inline">
+                            Entrevista Domiciliar de 1 Ano Realizada em {formatDate(existingEntrevista1Ano.data_visita)}
+                          </span>
+                          <span className="text-emerald-700 block text-[11px] mt-0.5">
+                            Responsável: <strong>{existingEntrevista1Ano.tecnico_responsavel}</strong> • Status pós-visita: <strong>{existingEntrevista1Ano.status_pos_visita}</strong>
+                          </span>
+                          {existingEntrevista1Ano.parecer_observacoes && (
+                            <span className="text-emerald-800 block text-[11px] italic mt-1 bg-white/60 p-2 rounded-lg border border-emerald-100">
+                              "{existingEntrevista1Ano.parecer_observacoes}"
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsEntrevistaModalOpen(true)}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition shrink-0 cursor-pointer self-start sm:self-auto"
+                      >
+                        Atualizar Registro
+                      </button>
+                    </div>
+                  )}
+
                   {/* Banner de Avaliação de 4 Meses já Concluída */}
                   {existingAvaliacao && !isPendente4Meses && (
                     <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between gap-3 text-xs">
@@ -2432,6 +2944,20 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
                         <span className="text-gray-400 font-semibold block">RG:</span>
                         <span className="font-medium text-gray-800">
                           {assistido.rg || 'Não informado'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block">Cartão do SUS:</span>
+                        <span className="font-medium text-gray-800">
+                          {assistido.cartao_sus || 'Não informado'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block">Uso de Imagem / Voz:</span>
+                        <span className="font-medium text-gray-800">
+                          {assistido.autoriza_imagem === false || assistido.autoriza_imagem === 'Não'
+                            ? 'Não autorizado'
+                            : 'Autorizado institucionalmente'}
                         </span>
                       </div>
                       <div>
@@ -2599,6 +3125,9 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
                       </div>
                     </div>
                   </div>
+
+                  {/* Núcleo Familiar & Projetos (Resumo com badges) */}
+                  {renderFamilyMembersSummaryCard()}
                 </div>
               )}
 
@@ -2625,6 +3154,20 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
                       <span className="text-gray-400 font-semibold block">RG:</span>
                       <span className="font-medium text-gray-800">
                         {assistido.rg || 'Não informado'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 font-semibold block">Cartão do SUS:</span>
+                      <span className="font-medium text-gray-800">
+                        {assistido.cartao_sus || 'Não informado'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 font-semibold block">Uso de Imagem / Voz:</span>
+                      <span className="font-medium text-gray-800">
+                        {assistido.autoriza_imagem === false || assistido.autoriza_imagem === 'Não'
+                          ? 'Não autorizado'
+                          : 'Autorizado institucionalmente'}
                       </span>
                     </div>
                     <div>
@@ -2800,6 +3343,67 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* ABA 3: MORADIA & COMPOSIÇÃO FAMILIAR */}
+              {activeTab === 'moradia' && (
+                <div className="space-y-6 animate-fadeIn">
+                  {/* Card de Informações da Moradia */}
+                  <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-2xs space-y-4">
+                    <h4 className="text-xs font-bold text-gray-900 uppercase tracking-wider flex items-center gap-2 border-b border-gray-100 pb-2.5">
+                      <Home className="w-4 h-4 text-emerald-600" />
+                      Situação de Moradia, Saneamento e Infraestrutura
+                    </h4>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+                      <div>
+                        <span className="text-gray-400 font-semibold block">Tipo de Moradia:</span>
+                        <span className="font-bold text-gray-900">{moradiaParsed.tipo}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block">Composição Domiciliar:</span>
+                        <span className="font-bold text-emerald-800">
+                          {isSituacaoRua ? 'Em Situação de Rua' : `${assistido.composicao_familiar || 1} pessoas no lar`}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block">Filhos Dependentes:</span>
+                        <span className="font-bold text-pink-700">
+                          {moradiaParsed.filhos !== ''
+                            ? `${moradiaParsed.filhos} filhos`
+                            : assistido.quantidade_filhos !== undefined && assistido.quantidade_filhos !== null
+                            ? `${assistido.quantidade_filhos} filhos`
+                            : 'Não informado'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block">Água e Energia Elétrica:</span>
+                        <span className="font-medium text-gray-800">
+                          Água: {moradiaParsed.agua} | Luz: {moradiaParsed.energia}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block">Serviços Básicos / Saneamento:</span>
+                        <span className="font-medium text-gray-800">{moradiaParsed.servicosGerais}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 font-semibold block">Acesso à Internet em Casa:</span>
+                        <span className="font-medium text-indigo-700">{assistido.acesso_internet || 'Não informado'}</span>
+                      </div>
+                      {moradiaParsed.obs && (
+                        <div className="col-span-1 sm:col-span-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                          <span className="text-slate-500 font-semibold block mb-1">
+                            Observações da Moradia:
+                          </span>
+                          <p className="text-slate-800 italic">"{moradiaParsed.obs}"</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Tabela Completa e Detalhada dos Membros do Núcleo Familiar */}
+                  {renderFamilyMembersSection(false)}
                 </div>
               )}
 
@@ -3357,6 +3961,105 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
                       </div>
                     </div>
                   )}
+
+                  {/* SEÇÃO DEDICADA: ENTREVISTA DOMICILIAR DE 1 ANO */}
+                  <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-2xs space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-gray-100 dark:border-slate-700 gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 flex items-center justify-center font-bold">
+                          <Home className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2 font-heading">
+                            <span>Entrevista Domiciliar de 1 Ano</span>
+                            {existingEntrevista1Ano ? (
+                              <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold rounded-md border border-emerald-300 dark:border-emerald-700 uppercase">
+                                Concluída
+                              </span>
+                            ) : isPendente1Ano ? (
+                              <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-300 text-[10px] font-bold rounded-md border border-amber-300 dark:border-amber-700 uppercase animate-pulse">
+                                Pendente
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-medium rounded-md border border-slate-200 dark:border-slate-600">
+                                Em Acompanhamento (&lt; 365 dias)
+                              </span>
+                            )}
+                          </h4>
+                          <p className="text-xs text-gray-500 dark:text-slate-400">
+                            Acompanhamento anual das condições habitacionais, evolução do lar e vulnerabilidades familiares
+                          </p>
+                        </div>
+                      </div>
+
+                      {canEvaluate && (
+                        <button
+                          type="button"
+                          onClick={() => setIsEntrevistaModalOpen(true)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer self-start sm:self-auto"
+                        >
+                          <Home className="w-3.5 h-3.5" />
+                          <span>{existingEntrevista1Ano ? 'Atualizar Entrevista' : 'Registrar Entrevista (1 Ano)'}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {existingEntrevista1Ano ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 text-xs">
+                        <div className="p-4 bg-gray-50 dark:bg-slate-700/60 rounded-xl border border-gray-100 dark:border-slate-600 space-y-1">
+                          <span className="text-gray-400 dark:text-slate-400 font-bold uppercase tracking-wider block text-[10px]">
+                            Data da Visita Domiciliar
+                          </span>
+                          <span className="font-extrabold text-gray-900 dark:text-white text-sm block">
+                            {formatDate(existingEntrevista1Ano.data_visita)}
+                          </span>
+                        </div>
+
+                        <div className="p-4 bg-gray-50 dark:bg-slate-700/60 rounded-xl border border-gray-100 dark:border-slate-600 space-y-1">
+                          <span className="text-gray-400 dark:text-slate-400 font-bold uppercase tracking-wider block text-[10px]">
+                            Técnico Responsável
+                          </span>
+                          <span className="font-extrabold text-slate-800 dark:text-slate-100 text-sm block">
+                            {existingEntrevista1Ano.tecnico_responsavel}
+                          </span>
+                        </div>
+
+                        <div className="p-4 bg-gray-50 dark:bg-slate-700/60 rounded-xl border border-gray-100 dark:border-slate-600 space-y-1">
+                          <span className="text-gray-400 dark:text-slate-400 font-bold uppercase tracking-wider block text-[10px]">
+                            Situação Familiar / Evolução
+                          </span>
+                          <span className="font-extrabold text-emerald-800 dark:text-emerald-300 text-sm block">
+                            {existingEntrevista1Ano.evolucao_situacao || 'Mantém / Sem alterações significativas'}
+                          </span>
+                        </div>
+
+                        <div className="col-span-1 sm:col-span-2 md:col-span-3 p-5 bg-gradient-to-r from-amber-50/60 to-orange-50/40 dark:from-amber-950/40 dark:to-orange-950/20 rounded-2xl border border-amber-200/80 dark:border-amber-800/60 space-y-2">
+                          <span className="text-amber-950 dark:text-amber-200 font-bold uppercase tracking-wider block text-[11px] flex items-center gap-1.5">
+                            <Home className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                            Observações da Evolução do Lar
+                          </span>
+                          <p className="text-slate-800 dark:text-slate-200 text-sm italic whitespace-pre-wrap leading-relaxed">
+                            "{existingEntrevista1Ano.observacoes_evolucao_lar || existingEntrevista1Ano.parecer_observacoes}"
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-5 bg-slate-50 dark:bg-slate-700/40 border border-slate-200 dark:border-slate-600 rounded-2xl text-center space-y-2">
+                        <p className="text-xs text-slate-600 dark:text-slate-300">
+                          Nenhuma Entrevista Domiciliar de 1 Ano registrada até o momento.
+                        </p>
+                        {isPendente1Ano ? (
+                          <span className="inline-block px-3 py-1 bg-amber-100 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 text-xs font-bold rounded-lg border border-amber-300 dark:border-amber-700">
+                            Atenção: Assistido possui 1 ano ou mais de acolhimento (&ge; 365 dias). Registro pendente!
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500 block">
+                            A visita de acompanhamento de 1 ano será solicitada automaticamente aos 365 dias de ingresso.
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -3921,6 +4624,142 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
                   Sim, Excluir
                 </>
               )}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Modal de Entrevista Domiciliar (1 Ano) */}
+    {isEntrevistaModalOpen && (
+      <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-5 animate-in zoom-in-95 duration-200">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 rounded-2xl">
+                <Home className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-heading font-bold text-base text-slate-900 dark:text-white">
+                  Registrar Entrevista Domiciliar (1 Ano)
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {assistido.nome_completo}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsEntrevistaModalOpen(false)}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Data da Visita Domiciliar */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Data da Visita Domiciliar <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={dataVisita}
+                  onChange={(e) => setDataVisita(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs font-semibold focus:ring-2 focus:ring-emerald-600 outline-none"
+                />
+              </div>
+
+              {/* Assistente Social / Técnico Responsável */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                  Assistente Social / Técnico <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={tecnicoResponsavel}
+                  onChange={(e) => setTecnicoResponsavel(e.target.value)}
+                  placeholder="Ex: Dra. Maria Silva - CRESS 1234"
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs font-medium focus:ring-2 focus:ring-emerald-600 outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Confirmação dos Dados Atuais (Situação da Família) */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                Confirmação dos Dados Atuais (Situação da Família) <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={evolucaoSituacao}
+                onChange={(e) => setEvolucaoSituacao(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs font-semibold focus:ring-2 focus:ring-emerald-600 outline-none"
+              >
+                <option value="Mantém / Sem alterações significativas">
+                  Mantém / Sem alterações significativas
+                </option>
+                <option value="Melhorou / Avanço socioeconômico">
+                  Melhorou / Avanço socioeconômico
+                </option>
+                <option value="Piorou / Maior vulnerabilidade">
+                  Piorou / Maior vulnerabilidade
+                </option>
+              </select>
+            </div>
+
+            {/* Status Pós-Visita */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                Status Pós-Visita Domiciliar <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={statusPosVisita}
+                onChange={(e) => setStatusPosVisita(e.target.value as any)}
+                className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs font-semibold focus:ring-2 focus:ring-emerald-600 outline-none"
+              >
+                <option value="Manter em Acompanhamento">Manter em Acompanhamento</option>
+                <option value="Pausado">Pausado</option>
+                <option value="Desligado">Desligado</option>
+              </select>
+            </div>
+
+            {/* Campo de Texto: Observações da Evolução do Lar */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
+                Observações da Evolução do Lar <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                rows={4}
+                value={observacoesEvolucaoLar}
+                onChange={(e) => setObservacoesEvolucaoLar(e.target.value)}
+                placeholder="Registre alterações na estrutura física da moradia, saúde mental, perda/ganho de familiares, variação na renda ou novas vulnerabilidades identificadas..."
+                className="w-full p-3 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs outline-none focus:ring-2 focus:ring-emerald-600"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={() => setIsEntrevistaModalOpen(false)}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={savingEntrevista}
+              onClick={handleSaveEntrevista}
+              className="inline-flex items-center gap-2 px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs transition shadow-md cursor-pointer disabled:opacity-50"
+            >
+              {savingEntrevista ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4" />
+              )}
+              <span>Salvar Registro de Entrevista</span>
             </button>
           </div>
         </div>

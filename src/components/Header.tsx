@@ -5,6 +5,8 @@ import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import {
   LayoutDashboard,
+  LayoutGrid,
+  HeartHandshake,
   LogOut,
   Shield,
   UserCheck,
@@ -34,8 +36,9 @@ export default function Header() {
     navigate('/login');
   };
 
-  const isDashboardActive =
-    location.pathname === '/dashboard' || location.pathname === '/';
+  const isModulosActive = location.pathname === '/modulos';
+  const isDashboardActive = location.pathname === '/dashboard';
+  const isVoluntariosActive = location.pathname === '/voluntarios' || location.pathname === '/gerenciar-voluntarios';
   const isCadastrarActive = location.pathname === '/cadastrar';
 
   const badgeStyle = getRoleBadgeClasses(role) || {
@@ -62,45 +65,81 @@ export default function Header() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Lado Esquerdo: Logotipo / Nome e Menu de Navegação Desktop */}
-            <div className="flex items-center gap-4 sm:gap-8">
+            <div className="flex items-center gap-4 sm:gap-6">
               <Link
-                to="/dashboard"
+                to="/modulos"
                 onClick={() => setIsMobileMenuOpen(false)}
                 className="flex items-center group transition-transform duration-200 hover:scale-102 py-1"
-                title="Início / Painel Geral - Fundação Lar Harmonia"
+                title="Início / Módulos - Fundação Lar Harmonia"
               >
                 <img
                   src={logoLarHarmonia}
                   alt="Fundação Lar Harmonia"
-                  className="w-[220px] h-[56px] object-contain dark:brightness-110 dark:contrast-110"
+                  className="w-[200px] sm:w-[220px] h-[52px] sm:h-[56px] object-contain dark:brightness-110 dark:contrast-110"
                 />
               </Link>
 
               {/* Menu de Navegação Principal Desktop */}
-              <nav className="hidden md:flex items-center gap-1.5">
+              <nav className="hidden md:flex items-center gap-1">
+                <Link
+                  to="/modulos"
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    isModulosActive
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-semibold border border-emerald-200/60 dark:border-emerald-800/50'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                  title="Seletor de Módulos"
+                >
+                  <LayoutGrid
+                    className={`w-3.5 h-3.5 ${
+                      isModulosActive ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-400'
+                    }`}
+                  />
+                  <span>Módulos</span>
+                </Link>
+
                 <Link
                   to="/dashboard"
-                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     isDashboardActive
                       ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-semibold border border-emerald-200/60 dark:border-emerald-800/50'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
+                  title="Gestão de Assistidos (Serviço Social)"
                 >
                   <LayoutDashboard
                     className={`w-3.5 h-3.5 ${
                       isDashboardActive ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-400'
                     }`}
                   />
-                  Início / Dashboard
+                  <span>Assistidos</span>
+                </Link>
+
+                <Link
+                  to="/voluntarios"
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    isVoluntariosActive
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-semibold border border-emerald-200/60 dark:border-emerald-800/50'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                  title="Gestão de Voluntários da Fundação"
+                >
+                  <HeartHandshake
+                    className={`w-3.5 h-3.5 ${
+                      isVoluntariosActive ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-400'
+                    }`}
+                  />
+                  <span>Voluntários</span>
                 </Link>
 
                 <Link
                   to="/cadastrar"
-                  className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     isCadastrarActive
                       ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-300 font-semibold border border-emerald-200/60 dark:border-emerald-800/50'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
                   }`}
+                  title="Cadastrar Novo Assistido"
                 >
                   <Plus className="w-3.5 h-3.5 text-emerald-700 dark:text-emerald-400" />
                   <span>Novo Cadastro</span>
@@ -110,7 +149,7 @@ export default function Header() {
                 <button
                   type="button"
                   onClick={() => setIsEquipeOpen(true)}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
                   title="Visualizar equipe e papéis de acesso"
                 >
                   <Users className="w-3.5 h-3.5 text-slate-400 dark:text-slate-400" />
@@ -232,6 +271,19 @@ export default function Header() {
             {/* Links de Navegação Mobile */}
             <div className="space-y-1">
               <Link
+                to="/modulos"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-bold transition ${
+                  isModulosActive
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <LayoutGrid className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                <span>Módulos do Sistema</span>
+              </Link>
+
+              <Link
                 to="/dashboard"
                 onClick={() => setIsMobileMenuOpen(false)}
                 className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-bold transition ${
@@ -241,7 +293,20 @@ export default function Header() {
                 }`}
               >
                 <LayoutDashboard className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
-                <span>Início / Painel Geral</span>
+                <span>Gestão de Assistidos (Serviço Social)</span>
+              </Link>
+
+              <Link
+                to="/voluntarios"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-bold transition ${
+                  isVoluntariosActive
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+              >
+                <HeartHandshake className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                <span>Gestão de Voluntários</span>
               </Link>
 
               <Link

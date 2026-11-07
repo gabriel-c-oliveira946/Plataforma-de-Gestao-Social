@@ -1,9 +1,13 @@
+import { MembroFamilia } from './cadastro';
+
 export interface Assistido {
   id: string;
   nome_completo: string;
   nome?: string;
   rg?: string | null;
   cpf?: string | null;
+  cartao_sus?: string | null;
+  autoriza_imagem?: 'Sim' | 'Não' | boolean | string | null;
   data_nascimento?: string | null;
   idade?: number | string | null;
   raca_cor?: string | null;
@@ -17,6 +21,7 @@ export interface Assistido {
   bairro_cras?: string | null;
   composicao_familiar?: number | string | null;
   quantidade_filhos?: number | string | null;
+  membros_familia?: MembroFamilia[] | null;
   atividade_remunerada?: string | null;
   profissao?: string | null;
   acesso_internet?: string | null;

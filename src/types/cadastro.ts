@@ -7,6 +7,34 @@ export interface ItemCondicaoSaude {
   observacoes: string; // Explicações e Observações
 }
 
+export interface MembroFamilia {
+  id?: string;
+  nome_membro: string;
+  data_nasc_idade: string;
+  vinculo: 'Filho(a)' | 'Neto(a)' | 'Sobrinho(a)' | 'Cônjuge' | 'Mãe/Pai' | 'Outro' | string;
+  projeto_oficina: 'Crescer Preciso' | 'Balé' | 'Capoeira' | 'Informática' | 'Nenhuma / Não Participa' | 'Outro' | string;
+  outro_vinculo?: string;
+  outro_projeto?: string;
+}
+
+export const VINCULOS_FAMILIARES = [
+  'Filho(a)',
+  'Neto(a)',
+  'Sobrinho(a)',
+  'Cônjuge',
+  'Mãe/Pai',
+  'Outro'
+] as const;
+
+export const PROJETOS_OFICINAS_FAMILIA = [
+  'Crescer Preciso',
+  'Balé',
+  'Capoeira',
+  'Informática',
+  'Nenhuma / Não Participa',
+  'Outro'
+] as const;
+
 export interface CadastroFormData {
   // Aba 1 - Identificação Civil e Contato
   nome_completo: string;
@@ -14,6 +42,8 @@ export interface CadastroFormData {
   idade: number | string;
   rg: string;
   cpf: string;
+  cartao_sus: string;
+  autoriza_imagem: 'Sim' | 'Não' | string;
   telefone: string;
   escolaridade: string;
   estado_civil: string;
@@ -48,6 +78,7 @@ export interface CadastroFormData {
   composicao_familiar: number | string; // Pessoas no domicílio (padrão 1)
   mora_sozinho: boolean; // "Mora sozinho / Em situação de rua"
   quantidade_filhos: number | string; // padrão 0
+  membros_familia: MembroFamilia[]; // Membros do núcleo familiar e dependentes
   acesso_internet: 'Sim' | 'Não';
   tipo_moradia: string; // Própria, Cedida, Alugada, Em situação de rua, etc.
   agua_regularidade: 'Regular' | 'Irregular';
@@ -131,6 +162,8 @@ export const INITIAL_CADASTRO_FORM: CadastroFormData = {
   idade: '',
   rg: '',
   cpf: '',
+  cartao_sus: '',
+  autoriza_imagem: 'Sim',
   telefone: '',
   escolaridade: 'Não informado',
   estado_civil: 'Não informado',
@@ -165,6 +198,7 @@ export const INITIAL_CADASTRO_FORM: CadastroFormData = {
   composicao_familiar: 1,
   mora_sozinho: false,
   quantidade_filhos: 0,
+  membros_familia: [],
   acesso_internet: 'Não',
   tipo_moradia: 'Não informado',
   agua_regularidade: 'Regular',

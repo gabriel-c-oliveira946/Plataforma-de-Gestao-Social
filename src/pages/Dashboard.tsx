@@ -6,9 +6,11 @@ import { useToast } from '../context/ToastContext';
 import { assistidosService } from '../services/assistidosService';
 import { VerFichaModal, Assistido } from '../components/VerFichaModal';
 export type { Assistido };
+import QuadroResumoModal, { calculateExactAge } from '../components/QuadroResumoModal';
 import { exportAssistidosToCSV } from '../utils/exportUtils';
 import {
   isPendenteAvaliacao4Meses,
+  isPendenteEntrevistaDomiciliar1Ano,
   hasAvaliacao4Meses,
   isStatusAtivo,
   getDiasIngresso,
@@ -46,7 +48,8 @@ import {
   List,
   ClipboardList,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Camera
 } from 'lucide-react';
 
 const COMPOSICAO_LIST = [
@@ -140,6 +143,22 @@ const ANOS_LIST = [
   '2022 ou anterior'
 ];
 
+const USO_IMAGEM_LIST = [
+  'Todos os Termos',
+  'Autoriza Imagem',
+  'NÃO Autoriza Imagem'
+];
+
+const FAIXA_ETARIA_LIST = [
+  'Todas as Idades',
+  '0 a 6 anos',
+  '7 a 11 anos',
+  '12 a 17 anos',
+  '18 a 29 anos',
+  '30 a 59 anos',
+  '60+ anos'
+];
+
 // Helper para extrair Data de Saída se houver
 export function getAssistidoDataSaida(item: Assistido): string | null {
   if (item.expectativa_curso?.includes('Data de Saída:')) {
@@ -214,6 +233,8 @@ export default function Dashboard() {
   const [filterServicosFLH, setFilterServicosFLH] = useState<string>('Todos');
   const [filterOcupacao, setFilterOcupacao] = useState<string>('Todos');
   const [filterInternet, setFilterInternet] = useState<string>('Todos');
+  const [filterUsoImagem, setFilterUsoImagem] = useState<string>('Todos os Termos');
+  const [filterFaixaEtaria, setFilterFaixaEtaria] = useState<string>('Todas as Idades');
 
   // Filtros complementares
   const [filterOficina, setFilterOficina] = useState<string>('Todos');
@@ -228,6 +249,9 @@ export default function Dashboard() {
 
   // Modal de Detalhes / Ficha Completa
   const [selectedAssistido, setSelectedAssistido] = useState<Assistido | null>(null);
+
+  // Modal do Quadro Resumo Estatístico
+  const [isQuadroResumoOpen, setIsQuadroResumoOpen] = useState<boolean>(false);
 
   // Modal de Exclusão (Admin)
   const [assistidoToDelete, setAssistidoToDelete] = useState<Assistido | null>(null);
@@ -312,12 +336,16 @@ export default function Dashboard() {
   // Métricas rápidas calculadas para o topo do Dashboard
   const metrics = useMemo(() => {
     let pendentes4Meses = 0;
+    let pendentesEntrevista1Ano = 0;
     let avaliacoesConcluidas = 0;
     let ativosAcompanhamento = 0;
 
     for (const item of assistidos) {
       if (isPendenteAvaliacao4Meses(item)) {
         pendentes4Meses++;
+      }
+      if (isPendenteEntrevistaDomiciliar1Ano(item)) {
+        pendentesEntrevista1Ano++;
       }
       if (hasAvaliacao4Meses(item)) {
         avaliacoesConcluidas++;
@@ -330,6 +358,7 @@ export default function Dashboard() {
     return {
       total: assistidos.length,
       pendentes4Meses,
+      pendentesEntrevista1Ano,
       avaliacoesConcluidas,
       ativosAcompanhamento
     };
@@ -346,6 +375,8 @@ export default function Dashboard() {
     setFilterServicosFLH('Todos');
     setFilterOcupacao('Todos');
     setFilterInternet('Todos');
+    setFilterUsoImagem('Todos os Termos');
+    setFilterFaixaEtaria('Todas as Idades');
     setFilterOficina('Todos');
     setFilterStatus('Todos os Status');
     setFilterAvaliacao('Todos');
@@ -365,6 +396,8 @@ export default function Dashboard() {
     if (filterServicosFLH !== 'Todos') count++;
     if (filterOcupacao !== 'Todos') count++;
     if (filterInternet !== 'Todos') count++;
+    if (filterUsoImagem !== 'Todos os Termos') count++;
+    if (filterFaixaEtaria !== 'Todas as Idades') count++;
     if (filterOficina !== 'Todos') count++;
     if (filterStatus !== 'Todos os Status') count++;
     if (filterAvaliacao !== 'Todos') count++;
@@ -381,6 +414,8 @@ export default function Dashboard() {
     filterServicosFLH,
     filterOcupacao,
     filterInternet,
+    filterUsoImagem,
+    filterFaixaEtaria,
     filterOficina,
     filterStatus,
     filterAvaliacao,
@@ -590,7 +625,11 @@ export default function Dashboard() {
       // [Em Acompanhamento (< 4 Meses)] (Exibe assistidos mais recentes com menos de 120 dias)
       // [Avaliação Concluída] (Exibe assistidos que já tiveram a avaliação de 4 meses registrada)
       if (filterAvaliacao !== 'Todos') {
-        if (filterAvaliacao.includes('Pendentes de Avaliação') || filterAvaliacao === 'Pendentes de Avaliação (>= 4 Meses)') {
+        if (filterAvaliacao.includes('Entrevista Domiciliar') || filterAvaliacao === 'Entrevista Domiciliar Pendente (1 Ano)') {
+          if (!isPendenteEntrevistaDomiciliar1Ano(item)) {
+            return false;
+          }
+        } else if (filterAvaliacao.includes('Pendentes de Avaliação') || filterAvaliacao === 'Pendentes de Avaliação (>= 4 Meses)') {
           if (!isPendenteAvaliacao4Meses(item)) {
             return false;
           }
@@ -637,6 +676,31 @@ export default function Dashboard() {
         if (itemYmd > filterDataFinal) return false;
       }
 
+      // 14. Filtro por Uso de Imagem
+      if (filterUsoImagem !== 'Todos os Termos') {
+        const isNaoAutorizado =
+          item.autoriza_imagem === 'Não' ||
+          item.autoriza_imagem === false ||
+          (item.expectativa_curso &&
+            /Autoriza[çc][ãa]o de Imagem:\s*Não/i.test(item.expectativa_curso));
+
+        if (filterUsoImagem === 'Autoriza Imagem' && isNaoAutorizado) return false;
+        if (filterUsoImagem === 'NÃO Autoriza Imagem' && !isNaoAutorizado) return false;
+      }
+
+      // 15. Filtro por Faixa Etária (Cálculo Dinâmico da Idade Exata)
+      if (filterFaixaEtaria !== 'Todas as Idades') {
+        const idade = calculateExactAge(item.data_nascimento, item.idade);
+        if (idade === null || isNaN(idade)) return false;
+
+        if (filterFaixaEtaria === '0 a 6 anos' && (idade < 0 || idade > 6)) return false;
+        if (filterFaixaEtaria === '7 a 11 anos' && (idade < 7 || idade > 11)) return false;
+        if (filterFaixaEtaria === '12 a 17 anos' && (idade < 12 || idade > 17)) return false;
+        if (filterFaixaEtaria === '18 a 29 anos' && (idade < 18 || idade > 29)) return false;
+        if (filterFaixaEtaria === '30 a 59 anos' && (idade < 30 || idade > 59)) return false;
+        if (filterFaixaEtaria === '60+ anos' && idade < 60) return false;
+      }
+
       return true;
     });
   }, [
@@ -650,6 +714,8 @@ export default function Dashboard() {
     filterServicosFLH,
     filterOcupacao,
     filterInternet,
+    filterUsoImagem,
+    filterFaixaEtaria,
     filterOficina,
     filterStatus,
     filterAvaliacao,
@@ -832,9 +898,72 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* ALERTA DE NOTIFICAÇÃO: Entrevista Domiciliar Pendente (1 Ano) */}
+        {metrics.pendentesEntrevista1Ano > 0 && (
+          <div className="mb-6 p-4 bg-orange-50 dark:bg-orange-950/50 border-2 border-orange-300 dark:border-orange-800 rounded-xl shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-orange-950 dark:text-orange-200 animate-in fade-in">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-orange-100 dark:bg-orange-900/60 text-orange-700 dark:text-orange-300 rounded-lg shrink-0 mt-0.5">
+                <Home className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-orange-900 dark:text-orange-300 font-heading">
+                  Alerta Social • Entrevistas Domiciliares Anuais
+                </h4>
+                <p className="text-xs sm:text-sm font-semibold text-orange-950 dark:text-orange-100 mt-0.5">
+                  Existe{metrics.pendentesEntrevista1Ano === 1 ? 'm' : 'm'} <span className="font-extrabold text-orange-800 dark:text-orange-300">{metrics.pendentesEntrevista1Ano} {metrics.pendentesEntrevista1Ano === 1 ? 'assistido' : 'assistidos'}</span> com cadastro ativo há mais de 12 meses (1 ano) que necessita{metrics.pendentesEntrevista1Ano === 1 ? '' : 'm'} de reavaliação / entrevista domiciliar anual.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setFilterAvaliacao('Entrevista Domiciliar Pendente (1 Ano)');
+                setShowFilters(true);
+              }}
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-bold shadow-xs transition cursor-pointer shrink-0"
+              title="Filtrar assistidos com 1 ano+ de acompanhamento"
+            >
+              <span>Ver Assistidos Pendentes</span>
+            </button>
+          </div>
+        )}
+
         {/* CARDS DE MÉTRICAS RÁPIDAS NO TOPO */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          {/* Card Requisitado com Destaque: X Pendentes de Avaliação de 4 Meses */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mb-6">
+          {/* Card 1: Entrevista Domiciliar Pendente (1 Ano) */}
+          <div
+            onClick={() => {
+              setFilterAvaliacao('Entrevista Domiciliar Pendente (1 Ano)');
+              setShowFilters(true);
+            }}
+            className={`p-4 rounded-xl border transition-all duration-200 cursor-pointer shadow-xs hover:shadow-sm flex items-center justify-between ${
+              filterAvaliacao.includes('Entrevista Domiciliar')
+                ? 'bg-orange-100/90 dark:bg-orange-950/60 border-orange-400 dark:border-orange-600 ring-2 ring-orange-400'
+                : 'bg-orange-50/90 dark:bg-orange-950/30 border-orange-200 dark:border-orange-800/60 hover:border-orange-300 dark:hover:border-orange-700'
+            }`}
+            title="Clique para filtrar assistidos ativos há mais de 12 meses (1 ano) para entrevista domiciliar"
+          >
+            <div className="space-y-1">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-orange-900 dark:text-orange-300 uppercase tracking-wider font-heading">
+                <Home className="w-3.5 h-3.5 text-orange-700 dark:text-orange-400" />
+                <span>Entrevista (1 Ano)</span>
+              </div>
+              <div className="text-2xl font-bold text-orange-950 dark:text-orange-100 font-heading">
+                {metrics.pendentesEntrevista1Ano}{' '}
+                <span className="text-sm font-semibold text-orange-800 dark:text-orange-300">
+                  {metrics.pendentesEntrevista1Ano === 1 ? 'Pendente' : 'Pendentes'}
+                </span>
+              </div>
+              <p className="text-[11px] text-orange-800 dark:text-orange-400 font-medium leading-tight">
+                Entrevista Domiciliar (12 Meses+)
+              </p>
+            </div>
+            <div className="w-10 h-10 rounded-lg bg-orange-200 dark:bg-orange-900/60 text-orange-800 dark:text-orange-300 flex items-center justify-center shrink-0">
+              <Clock className="w-5 h-5 text-orange-700 dark:text-orange-400" />
+            </div>
+          </div>
+
+          {/* Card 2: X Pendentes de Avaliação de 4 Meses */}
           <div
             onClick={() => {
               setFilterAvaliacao('Pendentes de Avaliação (>= 4 Meses)');
@@ -858,11 +987,11 @@ export default function Dashboard() {
                   {metrics.pendentes4Meses === 1 ? 'Pendente' : 'Pendentes'}
                 </span>
               </div>
-              <p className="text-xs text-amber-800 dark:text-amber-400 font-medium">
-                {metrics.pendentes4Meses} {metrics.pendentes4Meses === 1 ? 'Pendente de Avaliação de 4 Meses' : 'Pendentes de Avaliação de 4 Meses'}
+              <p className="text-[11px] text-amber-800 dark:text-amber-400 font-medium leading-tight">
+                Avaliação 4 Meses (120d+)
               </p>
             </div>
-            <div className="w-11 h-11 rounded-lg bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-lg bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300 flex items-center justify-center shrink-0">
               <AlertTriangle className="w-5 h-5 text-amber-700 dark:text-amber-400" />
             </div>
           </div>
@@ -1265,6 +1394,44 @@ export default function Dashboard() {
                   className="w-full p-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-emerald-700 outline-none"
                 />
               </div>
+
+              {/* 14. Termo de Uso de Imagem */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <Camera className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Uso de Imagem</span>
+                </label>
+                <select
+                  value={filterUsoImagem}
+                  onChange={(e) => setFilterUsoImagem(e.target.value)}
+                  className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-emerald-700 outline-none"
+                >
+                  {USO_IMAGEM_LIST.map((u) => (
+                    <option key={u} value={u} className="dark:bg-slate-800 dark:text-slate-100">
+                      {u}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* 15. Faixa Etária */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-1">
+                  <UserIcon className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Faixa Etária (Idade)</span>
+                </label>
+                <select
+                  value={filterFaixaEtaria}
+                  onChange={(e) => setFilterFaixaEtaria(e.target.value)}
+                  className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:ring-1 focus:ring-emerald-700 outline-none"
+                >
+                  {FAIXA_ETARIA_LIST.map((f) => (
+                    <option key={f} value={f} className="dark:bg-slate-800 dark:text-slate-100">
+                      {f}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
         </div>
@@ -1281,6 +1448,17 @@ export default function Dashboard() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            {/* Botão para Quadro Resumo Estatístico */}
+            <button
+              type="button"
+              onClick={() => setIsQuadroResumoOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 text-xs font-bold rounded-lg shadow-2xs transition cursor-pointer"
+              title="Abrir Quadro Resumo Estatístico por Faixa Etária, Sexo e Indicadores (A4 / Excel)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 shrink-0 text-emerald-700 dark:text-emerald-400" />
+              <span>Quadro Resumo</span>
+            </button>
+
             {/* Botão de Destaque para Exportação CSV / Excel */}
             <button
               type="button"
@@ -1440,6 +1618,17 @@ export default function Dashboard() {
                             >
                               <AlertTriangle className="w-3 h-3 text-amber-700 dark:text-amber-400 shrink-0" />
                               <span>Avaliação 4 Meses Pendente</span>
+                            </span>
+                          </div>
+                        )}
+                        {isPendenteEntrevistaDomiciliar1Ano(assistido) && (
+                          <div className="mb-1.5">
+                            <span
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-700 shadow-2xs"
+                              title="Assistido ativo há 1 ano ou mais (>= 365 dias). Necessita registro da Entrevista Domiciliar."
+                            >
+                              <AlertTriangle className="w-3 h-3 text-amber-700 dark:text-amber-400 shrink-0" />
+                              <span>Pendente Entrevista Domiciliar (1 Ano)</span>
                             </span>
                           </div>
                         )}
@@ -1613,6 +1802,7 @@ export default function Dashboard() {
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-xs text-slate-800 dark:text-slate-200">
                   {filteredAssistidos.map((assistido) => {
                     const isPendente = isPendenteAvaliacao4Meses(assistido);
+                    const isPendente1Ano = isPendenteEntrevistaDomiciliar1Ano(assistido);
                     const isConcluida = hasAvaliacao4Meses(assistido);
                     const dias = getDiasIngresso(assistido.data_ingresso, assistido.created_at);
                     const isSituacaoRua =
@@ -1623,7 +1813,7 @@ export default function Dashboard() {
                       <tr
                         key={assistido.id}
                         className={`hover:bg-slate-50 dark:hover:bg-slate-700/50 transition ${
-                          isPendente ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''
+                          isPendente || isPendente1Ano ? 'bg-amber-50/40 dark:bg-amber-950/20' : ''
                         }`}
                       >
                         {/* Assistido Foto & Nome */}
@@ -1667,23 +1857,31 @@ export default function Dashboard() {
                           </div>
                         </td>
 
-                        {/* Avaliação 4 Meses */}
+                        {/* Avaliação 4 Meses e Acompanhamento */}
                         <td className="py-3 px-4 whitespace-nowrap">
-                          {isPendente ? (
-                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-700 shadow-2xs">
-                              <AlertTriangle className="w-3 h-3 text-amber-700 dark:text-amber-400 shrink-0" />
-                              <span>Avaliação 4 Meses Pendente</span>
-                            </span>
-                          ) : isConcluida ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-700 dark:text-emerald-400" />
-                              Avaliação Concluída
-                            </span>
-                          ) : (
-                            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                              {dias !== null ? `${dias} dias (< 120 dias)` : 'Em acompanhamento'}
-                            </span>
-                          )}
+                          <div className="flex flex-col gap-1 items-start">
+                            {isPendente1Ano && (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-700 shadow-2xs">
+                                <AlertTriangle className="w-3 h-3 text-amber-700 dark:text-amber-400 shrink-0" />
+                                <span>Pendente Entrevista Domiciliar (1 Ano)</span>
+                              </span>
+                            )}
+                            {isPendente ? (
+                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-100 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-700 shadow-2xs">
+                                <AlertTriangle className="w-3 h-3 text-amber-700 dark:text-amber-400 shrink-0" />
+                                <span>Avaliação 4 Meses Pendente</span>
+                              </span>
+                            ) : isConcluida ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-700 dark:text-emerald-400" />
+                                Avaliação Concluída
+                              </span>
+                            ) : !isPendente1Ano ? (
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                                {dias !== null ? `${dias} dias (< 120 dias)` : 'Em acompanhamento'}
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
 
                         {/* Oficina */}
@@ -1801,6 +1999,15 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL DE QUADRO RESUMO ESTATÍSTICO (RELAÇÕES SOCIOECONÔMICAS E DEMOGRÁFICAS) */}
+      {/* ========================================================================= */}
+      <QuadroResumoModal
+        isOpen={isQuadroResumoOpen}
+        onClose={() => setIsQuadroResumoOpen(false)}
+        assistidos={filteredAssistidos.length > 0 ? filteredAssistidos : assistidos}
+      />
     </div>
   );
 }

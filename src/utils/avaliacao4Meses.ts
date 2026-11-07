@@ -119,10 +119,118 @@ export function isPendenteAvaliacao4Meses(item: AssistidoParaAvaliacao): boolean
 }
 
 /**
- * Opções para o filtro dedicado "Avaliação de 4 Meses".
+ * Um assistido é considerado "Pendente de Entrevista Domiciliar (1 Ano)" se:
+ * 1. O 'status' atual do assistido for 'Ativo' / 'Em Acompanhamento'.
+ * 2. (Data Atual - data_ingresso/created_at) >= 365 dias (1 ano / 12 meses).
+ * 3. O registro de entrevista domiciliar de 1 ano ainda não foi realizado.
+ */
+export interface Entrevista1AnoParsed {
+  data_visita: string;
+  tecnico_responsavel: string;
+  evolucao_situacao?: 'Mantém' | 'Melhorou' | 'Piorou' | string;
+  observacoes_evolucao_lar?: string;
+  parecer_observacoes: string;
+  status_pos_visita: 'Manter em Acompanhamento' | 'Pausado' | 'Desligado' | string;
+}
+
+export function hasEntrevistaDomiciliar1Ano(item: AssistidoParaAvaliacao): boolean {
+  if (
+    item.expectativa_curso?.toLowerCase().includes('entrevista domiciliar 1 ano') ||
+    item.expectativa_curso?.toLowerCase().includes('entrevista domiciliar (1 ano)') ||
+    item.expectativa_curso?.toLowerCase().includes('entrevista domiciliar 12 meses') ||
+    item.expectativa_curso?.toLowerCase().includes('visita domiciliar (1 ano)') ||
+    item.expectativa_curso?.toLowerCase().includes('visita domiciliar 1 ano')
+  ) {
+    return true;
+  }
+
+  if (
+    Array.isArray(item.servicos_acompanhamento) &&
+    item.servicos_acompanhamento.some((s) => {
+      const lower = s.toLowerCase();
+      return (
+        lower.includes('entrevista domiciliar (1 ano)') ||
+        lower.includes('entrevista domiciliar 1 ano') ||
+        lower.includes('entrevista domiciliar 12 meses') ||
+        lower.includes('visita domiciliar (1 ano)') ||
+        lower.includes('visita domiciliar 1 ano')
+      );
+    })
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+export function isPendenteEntrevistaDomiciliar1Ano(item: AssistidoParaAvaliacao): boolean {
+  // Se a entrevista de 1 ano já foi registrada, NÃO está pendente
+  if (hasEntrevistaDomiciliar1Ano(item)) {
+    return false;
+  }
+
+  // Apenas assistidos formalmente desligados ou desistentes não recebem visita domiciliar anual
+  const s = (item.status_curso || '').toLowerCase().trim();
+  if (s.includes('desligad') || s.includes('desist') || s.includes('evas')) {
+    return false;
+  }
+
+  const dias = getDiasIngresso(item.data_ingresso, item.created_at);
+  if (dias === null) {
+    return false;
+  }
+
+  return dias >= 365;
+}
+
+export function getEntrevistaDomiciliar1Ano(item: { expectativa_curso?: string | null }): Entrevista1AnoParsed | null {
+  if (!item?.expectativa_curso) return null;
+  const match = item.expectativa_curso.match(
+    /\[Entrevista Domiciliar (?:1 Ano|12 Meses|\(1 Ano\))\s*-\s*([^\]]+)\]\s*([\s\S]*?)(?:$|\|(?:\s*\[|\s*Data de Saída|\s*Oficina|$))/i
+  );
+  if (!match) return null;
+
+  const dataVisita = match[1].trim();
+  const blocoConteudo = match[2];
+
+  let tecnico = '';
+  let evolucao = 'Mantém';
+  let statusPosVisita = 'Manter em Acompanhamento';
+  let parecer = '';
+
+  const tecMatch = blocoConteudo.match(/(?:Responsável|Técnico):\s*([^|]+)/i);
+  if (tecMatch) tecnico = tecMatch[1].trim();
+
+  const evolucaoMatch = blocoConteudo.match(/(?:Situação Familiar|Situação|Evolução):\s*([^|]+)/i);
+  if (evolucaoMatch) evolucao = evolucaoMatch[1].trim();
+
+  const statusMatch = blocoConteudo.match(/Status:\s*([^|]+)/i);
+  if (statusMatch) {
+    const s = statusMatch[1].trim();
+    if (s.toLowerCase().includes('desligad')) statusPosVisita = 'Desligado';
+    else if (s.toLowerCase().includes('pausad')) statusPosVisita = 'Pausado';
+    else statusPosVisita = 'Manter em Acompanhamento';
+  }
+
+  const parecerMatch = blocoConteudo.match(/(?:Observações da Evolução do Lar|Evolução do Lar|Observações|Parecer|Obs):\s*([\s\S]*?)(?:\||$)/i);
+  if (parecerMatch) parecer = parecerMatch[1].trim();
+
+  return {
+    data_visita: dataVisita,
+    tecnico_responsavel: tecnico || 'Serviço Social',
+    evolucao_situacao: evolucao,
+    observacoes_evolucao_lar: parecer,
+    parecer_observacoes: parecer,
+    status_pos_visita: statusPosVisita
+  };
+}
+
+/**
+ * Opções para o filtro dedicado "Avaliação de 4 Meses e Alertas".
  */
 export const FILTRO_AVALIACAO_4_MESES = [
   'Todos',
+  'Pendente Entrevista Domiciliar (1 Ano)',
   'Pendentes de Avaliação (>= 4 Meses)',
   'Em Acompanhamento (< 4 Meses)',
   'Avaliação Concluída'

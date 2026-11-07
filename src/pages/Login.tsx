@@ -302,7 +302,7 @@ export default function Login() {
         // Ignora falhas de cache local
       }
 
-      navigate('/dashboard');
+      navigate('/modulos');
     } catch (err: any) {
       setError(err?.message || 'Ocorreu um erro inesperado ao realizar o login.');
     } finally {

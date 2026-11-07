@@ -450,6 +450,15 @@ export default function CadastrarAssistido() {
         expectativasList.push(`Motivo da Evasão: ${formData.motivo_evasao.trim()}`);
       }
 
+      if (formData.cartao_sus?.trim()) {
+        expectativasList.push(`Cartão SUS: ${formData.cartao_sus.trim()}`);
+      }
+      expectativasList.push(`Autorização de Imagem: ${formData.autoriza_imagem === 'Não' ? 'Não' : 'Sim'}`);
+
+      if (Array.isArray(formData.membros_familia) && formData.membros_familia.length > 0) {
+        expectativasList.push(`[Membros da Família: ${JSON.stringify(formData.membros_familia)}]`);
+      }
+
       const expectativaCursoFinal =
         expectativasList.length > 0 ? expectativasList.join(' | ') : null;
 
@@ -526,6 +535,9 @@ export default function CadastrarAssistido() {
         nome_completo: formData.nome_completo.trim(),
         rg: cleanRg,
         cpf: cleanCpf,
+        cartao_sus: formData.cartao_sus?.trim() || null,
+        autoriza_imagem: formData.autoriza_imagem === 'Sim' || (formData.autoriza_imagem as any) === true,
+        em_situacao_rua: Boolean(formData.em_situacao_rua),
         data_nascimento: formData.data_nascimento || null,
         idade: formData.idade === '' ? null : Number(formData.idade),
         raca_cor: formData.raca_cor || 'Não informado',
@@ -548,6 +560,8 @@ export default function CadastrarAssistido() {
 
         // Aba 3 - Moradia, Composição Familiar e Infraestrutura
         composicao_familiar: finalComposicaoFamiliar,
+        quantidade_filhos: formData.quantidade_filhos !== '' ? Number(formData.quantidade_filhos) : 0,
+        membros_familia: formData.membros_familia || [],
         acesso_internet: formData.acesso_internet,
         tipo_moradia: tipoMoradiaFinal,
         servicos_basicos_regulares: formData.servicos_basicos_gerais === 'Sim',

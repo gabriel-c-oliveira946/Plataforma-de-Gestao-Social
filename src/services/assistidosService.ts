@@ -39,6 +39,29 @@ export const INITIAL_ASSISTIDOS: Assistido[] = [
     bairro_cras: 'CRAS Boca do Rio',
     composicao_familiar: 4,
     quantidade_filhos: 3,
+    membros_familia: [
+      {
+        id: 'mem-001-1',
+        nome_membro: 'Lucas Santos',
+        data_nasc_idade: '10 anos',
+        vinculo: 'Filho(a)',
+        projeto_oficina: 'Crescer Preciso'
+      },
+      {
+        id: 'mem-001-2',
+        nome_membro: 'Mariana Santos',
+        data_nasc_idade: '14 anos',
+        vinculo: 'Filho(a)',
+        projeto_oficina: 'Balé'
+      },
+      {
+        id: 'mem-001-3',
+        nome_membro: 'Pedro Henrique Santos',
+        data_nasc_idade: '6 anos',
+        vinculo: 'Filho(a)',
+        projeto_oficina: 'Capoeira'
+      }
+    ],
     atividade_remunerada: 'Sim',
     profissao: 'Diarista autônoma (3x por semana)',
     acesso_internet: 'Sim, dados móveis no celular',
@@ -121,6 +144,36 @@ export const INITIAL_ASSISTIDOS: Assistido[] = [
     bairro_cras: 'CRAS Itapuã',
     composicao_familiar: 5,
     quantidade_filhos: 3,
+    membros_familia: [
+      {
+        id: 'mem-003-1',
+        nome_membro: 'Kauã Pereira de Lima',
+        data_nasc_idade: '12 anos',
+        vinculo: 'Filho(a)',
+        projeto_oficina: 'Informática'
+      },
+      {
+        id: 'mem-003-2',
+        nome_membro: 'Beatriz Pereira de Lima',
+        data_nasc_idade: '8 anos',
+        vinculo: 'Filho(a)',
+        projeto_oficina: 'Capoeira'
+      },
+      {
+        id: 'mem-003-3',
+        nome_membro: 'Matheus Pereira de Lima',
+        data_nasc_idade: '5 anos',
+        vinculo: 'Filho(a)',
+        projeto_oficina: 'Crescer Preciso'
+      },
+      {
+        id: 'mem-003-4',
+        nome_membro: 'José Roberto de Lima',
+        data_nasc_idade: '50 anos',
+        vinculo: 'Cônjuge',
+        projeto_oficina: 'Nenhuma / Não Participa'
+      }
+    ],
     atividade_remunerada: 'Sim',
     profissao: 'Vendedora de bolos caseiros',
     acesso_internet: 'Sim, Wi-Fi comunitário',
@@ -234,14 +287,24 @@ function getStoredAssistidos(): Assistido[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+        return parsed.map((item) => {
+          const normalized = normalizeAssistido(item);
+          if (!normalized.membros_familia || normalized.membros_familia.length === 0) {
+            const initial = INITIAL_ASSISTIDOS.find((init) => init.id === normalized.id);
+            if (initial?.membros_familia && initial.membros_familia.length > 0) {
+              normalized.membros_familia = initial.membros_familia;
+            }
+          }
+          return normalized;
+        });
       }
     }
   } catch (err) {
     console.warn('Erro ao ler localStorage de assistidos:', err);
   }
-  saveStoredAssistidos(INITIAL_ASSISTIDOS);
-  return INITIAL_ASSISTIDOS;
+  const initialNormalized = INITIAL_ASSISTIDOS.map(normalizeAssistido);
+  saveStoredAssistidos(initialNormalized);
+  return initialNormalized;
 }
 
 function saveStoredAssistidos(items: Assistido[]): void {
@@ -250,6 +313,114 @@ function saveStoredAssistidos(items: Assistido[]): void {
   } catch (err) {
     console.warn('Erro ao salvar no localStorage de assistidos:', err);
   }
+}
+
+/**
+ * Reconstrói propriedades virtuais (cartao_sus, autoriza_imagem, em_situacao_rua) a partir da expectativa_curso
+ * e tipo_moradia quando o PostgREST não as possui como colunas nativas no PostgreSQL do Supabase.
+ */
+export function normalizeAssistido(item: Assistido): Assistido {
+  if (!item) return item;
+  const result: Assistido = { ...item };
+
+  if (!result.cartao_sus && result.expectativa_curso) {
+    const match = result.expectativa_curso.match(/Cart[ãa]o SUS:\s*([^|]+)/i);
+    if (match && match[1]?.trim()) {
+      result.cartao_sus = match[1].trim();
+    }
+  }
+
+  if (result.autoriza_imagem === undefined || result.autoriza_imagem === null || result.autoriza_imagem === '') {
+    if (result.expectativa_curso) {
+      const match = result.expectativa_curso.match(/(?:Autoriza[çc][ãa]o de Imagem|Uso de Imagem):\s*([^|]+)/i);
+      if (match && match[1]?.trim()) {
+        const val = match[1].trim().toLowerCase();
+        result.autoriza_imagem = val.includes('não') ? 'Não' : 'Sim';
+      }
+    }
+    if (result.autoriza_imagem === undefined || result.autoriza_imagem === null || result.autoriza_imagem === '') {
+      result.autoriza_imagem = 'Sim';
+    }
+  }
+
+  if ((result as any).em_situacao_rua === undefined || (result as any).em_situacao_rua === null) {
+    const tipoMor = (result.tipo_moradia || '').toLowerCase();
+    const ender = (result.endereco || '').toLowerCase();
+    (result as any).em_situacao_rua =
+      tipoMor.includes('rua') || ender.includes('situação de rua') || ender.includes('situacao de rua');
+  }
+
+  if (!result.membros_familia || !Array.isArray(result.membros_familia) || result.membros_familia.length === 0) {
+    if (result.expectativa_curso) {
+      const match = result.expectativa_curso.match(/\[Membros da Fam[íi]lia:\s*(\[.*?\])\]/i);
+      if (match && match[1]) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            result.membros_familia = parsed;
+          }
+        } catch {
+          // ignore json parse error
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Sanitiza o payload antes de enviar ao Supabase para garantir compatibilidade estrita
+ * com o esquema de colunas do PostgreSQL (ex: converte booleans e omite campos virtuais/customizados
+ * que não são colunas diretas na tabela 'assistidos' do Supabase).
+ */
+function sanitizePayloadForSupabase(payload: Record<string, any>): Record<string, any> {
+  const clean = { ...payload };
+
+  // Garantir booleans para colunas reais da tabela assistidos
+  if ('possui_cadastro_flh' in clean) {
+    if (typeof clean.possui_cadastro_flh === 'string') {
+      const val = clean.possui_cadastro_flh.trim().toLowerCase();
+      clean.possui_cadastro_flh = val === 'sim' || val === 'true' || val === '1';
+    } else {
+      clean.possui_cadastro_flh = Boolean(clean.possui_cadastro_flh);
+    }
+  }
+
+  if ('possui_cras' in clean) {
+    if (typeof clean.possui_cras === 'string') {
+      const val = clean.possui_cras.trim().toLowerCase();
+      clean.possui_cras = val === 'sim' || val === 'true' || val === '1';
+    } else {
+      clean.possui_cras = Boolean(clean.possui_cras);
+    }
+  }
+
+  if ('servicos_basicos_regulares' in clean) {
+    if (typeof clean.servicos_basicos_regulares === 'string') {
+      const val = clean.servicos_basicos_regulares.trim().toLowerCase();
+      clean.servicos_basicos_regulares = val === 'sim' || val === 'true' || val === '1' || val === 'regular';
+    } else {
+      clean.servicos_basicos_regulares = Boolean(clean.servicos_basicos_regulares);
+    }
+  }
+
+  if ('possui_deficiencia' in clean) {
+    if (typeof clean.possui_deficiencia === 'string') {
+      const val = clean.possui_deficiencia.trim().toLowerCase();
+      clean.possui_deficiencia = val === 'sim' || val === 'true' || val === '1';
+    } else {
+      clean.possui_deficiencia = Boolean(clean.possui_deficiencia);
+    }
+  }
+
+  // Omitir campos estendidos/virtuais que não existem como colunas diretas na tabela assistidos no Supabase
+  // para evitar erro PGRST204 ("Could not find column in schema cache")
+  delete clean.em_situacao_rua;
+  delete clean.cartao_sus;
+  delete clean.autoriza_imagem;
+
+  return clean;
 }
 
 export const assistidosService = {
@@ -264,8 +435,9 @@ export const assistidosService = {
           .order('created_at', { ascending: false });
 
         if (!error && Array.isArray(data) && data.length > 0) {
-          saveStoredAssistidos(data);
-          return data;
+          const normalizedData = data.map(normalizeAssistido);
+          saveStoredAssistidos(normalizedData);
+          return normalizedData;
         }
       }
     } catch (err) {
@@ -280,33 +452,41 @@ export const assistidosService = {
     const generatedId = generateUUID();
     const newId = isProvidedIdValid ? item.id : generatedId;
     const nowIso = new Date().toISOString();
-    const fullRecord: Assistido = {
+    const fullRecord: Assistido = normalizeAssistido({
       ...(item as Assistido),
       id: newId,
       created_at: item.created_at || nowIso,
       updated_at: item.updated_at || nowIso,
       nome_completo: item.nome_completo || ''
-    };
+    });
 
     const hasUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL;
     if (hasUrl) {
-      // Cria o payload limpo para o Supabase
-      const supabasePayload: Record<string, any> = { ...fullRecord };
+      // Cria o payload limpo e sanitizado para o Supabase
+      const supabasePayload: Record<string, any> = sanitizePayloadForSupabase(fullRecord);
       // Se não for um UUID válido fornecido explicitamente, omitimos o campo 'id'
       // para permitir que o PostgreSQL gere o UUID automaticamente via gen_random_uuid()
       if (!isProvidedIdValid) {
         delete supabasePayload.id;
       }
 
-      const { data, error } = await supabase.from('assistidos').insert([supabasePayload]).select();
+      let { data, error } = await supabase.from('assistidos').insert([supabasePayload]).select();
+      if (error && (error.code === 'PGRST204' || error.message?.includes('schema cache')) && supabasePayload.membros_familia) {
+        const fallbackPayload = { ...supabasePayload };
+        delete fallbackPayload.membros_familia;
+        const retry = await supabase.from('assistidos').insert([fallbackPayload]).select();
+        data = retry.data;
+        error = retry.error;
+      }
       if (error) {
         console.error('Erro ao inserir assistido no Supabase:', error);
         throw new Error(error.message || 'Erro ao registrar assistido no Supabase.');
       }
       if (data && data[0]) {
+        const normalized = normalizeAssistido({ ...fullRecord, ...data[0] });
         const current = getStoredAssistidos();
-        saveStoredAssistidos([data[0], ...current.filter((a) => a.id !== data[0].id)]);
-        return data[0];
+        saveStoredAssistidos([normalized, ...current.filter((a) => a.id !== normalized.id)]);
+        return normalized;
       }
     }
 
@@ -325,14 +505,27 @@ export const assistidosService = {
     try {
       const hasUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL;
       if (hasUrl && isValidUUID(id)) {
-        const { data, error } = await supabase
+        const supabaseUpdates = sanitizePayloadForSupabase(updates);
+        let { data, error } = await supabase
           .from('assistidos')
-          .update({ ...updates, updated_at: nowIso })
+          .update({ ...supabaseUpdates, updated_at: nowIso })
           .eq('id', id)
           .select();
 
+        if (error && (error.code === 'PGRST204' || error.message?.includes('schema cache')) && supabaseUpdates.membros_familia) {
+          const fallbackUpdates = { ...supabaseUpdates };
+          delete fallbackUpdates.membros_familia;
+          const retry = await supabase
+            .from('assistidos')
+            .update({ ...fallbackUpdates, updated_at: nowIso })
+            .eq('id', id)
+            .select();
+          data = retry.data;
+          error = retry.error;
+        }
+
         if (!error && data && data[0]) {
-          updatedRecord = data[0];
+          updatedRecord = normalizeAssistido({ ...updates, ...data[0] });
         }
       }
     } catch (err) {
@@ -342,12 +535,12 @@ export const assistidosService = {
     const current = getStoredAssistidos();
     const existing = current.find((a) => a.id === id);
     if (!updatedRecord) {
-      updatedRecord = {
+      updatedRecord = normalizeAssistido({
         ...(existing || ({} as Assistido)),
         ...updates,
         id,
         updated_at: nowIso
-      } as Assistido;
+      } as Assistido);
     }
 
     const newStore = current.map((a) => (a.id === id ? updatedRecord! : a));

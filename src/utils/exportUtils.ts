@@ -54,6 +54,7 @@ function formatList(
 
 /**
  * Exporta a lista de assistidos para um arquivo CSV formatado com BOM UTF-8 (compatível com Microsoft Excel)
+ * Sem ID Cadastral e com todas as colunas organizadas por grupos socioeconômicos e demográficos.
  */
 export function exportAssistidosToCSV(assistidos: Assistido[]): {
   success: boolean;
@@ -70,38 +71,52 @@ export function exportAssistidosToCSV(assistidos: Assistido[]): {
     return `"${str.replace(/"/g, '""')}"`;
   };
 
-  // Nomes exatos das colunas (sem ID Cadastral)
+  // Nomes exatos e organizados das colunas (SEM ID Cadastral)
   const headers = [
+    // Identificação
     'Nome Completo',
     'CPF',
     'RG / Documento',
+    'Número do Cartão SUS',
+    'Idade',
+    'Data de Nascimento',
     'Cor / Raça / Etnia',
-    'Idade / Data de Nascimento',
     'Estado Civil',
     'Telefone / Contato',
     'Endereço Completo',
     'Bairro / Localidade',
+    'Situação de Rua',
+    'Autorização Uso de Imagem',
+
+    // Acompanhamento
+    'Data de Ingresso',
+    'Status do Acompanhamento',
+    'Fatores de Desistência / Motivo Evasão',
     'Cadastro no CRAS',
+
+    // Renda & Trabalho
     'Escolaridade',
-    'Composição Familiar (Pessoas)',
-    'Filhos',
-    'Atividade Remunerada',
-    'Ocupação Atual',
-    'Faixa de Renda (Renda Familiar / Própria)',
+    'Ocupação / Atividade',
+    'Turno de Trabalho',
+    'Faixa de Renda',
     'Programas Sociais',
+
+    // Moradia
     'Tipo de Moradia',
-    'Infraestrutura Básica',
+    'Composição Familiar (Pessoas)',
+    'Quantidade de Filhos',
+    'Membros do Núcleo Familiar (Nome / Vínculo / Projeto)',
     'Acesso à Internet',
+    'Serviços Básicos',
+
+    // Saúde & Vulnerabilidades
     'Condições de Saúde na Família',
     'Dificuldades Enfrentadas pela Família',
     'Rede de Apoio Principal',
-    'Serviços FLH Utilizados',
+
+    // Oficinas & Objetivos
     'Oficina Pretendida',
-    'Objetivos Pós-Oficina / O que Pretende Fazer',
-    'Data de Ingresso',
-    'Status do Acompanhamento',
-    'Motivo da Evasão / Desistência',
-    'Pendente Avaliação 4 Meses? (Sim/Não)'
+    'Objetivos Futuros / Pós-Oficina'
   ];
 
   const rows = assistidos.map((item) => {
@@ -114,31 +129,33 @@ export function exportAssistidosToCSV(assistidos: Assistido[]): {
     // 3. RG / Documento
     const rg = item.rg || 'Não informado';
 
-    // 4. Cor / Raça / Etnia
-    const racaCor = item.raca_cor || 'Não informado';
+    // 4. Cartão SUS
+    const cartaoSus =
+      (item as any).cartao_sus ||
+      (item.expectativa_curso
+        ? item.expectativa_curso.match(/Cart[ãa]o SUS:\s*([^|]+)/i)?.[1]?.trim()
+        : null) ||
+      'Não informado';
 
-    // 5. Idade / Data de Nascimento
-    const idadeVal =
+    // 5. Idade
+    const idade =
       item.idade !== null && item.idade !== undefined && item.idade !== ''
         ? `${item.idade} anos`
-        : '';
-    const nascVal = item.data_nascimento ? formatDate(item.data_nascimento) : '';
-    let idadeDataNasc = 'Não informado';
-    if (idadeVal && nascVal) {
-      idadeDataNasc = `${idadeVal} (${nascVal})`;
-    } else if (idadeVal) {
-      idadeDataNasc = idadeVal;
-    } else if (nascVal) {
-      idadeDataNasc = nascVal;
-    }
+        : 'Não informada';
 
-    // 6. Estado Civil
+    // 6. Data de Nascimento
+    const dataNasc = item.data_nascimento ? formatDate(item.data_nascimento) : 'Não informada';
+
+    // 7. Cor / Raça / Etnia
+    const racaCor = item.raca_cor || 'Não informado';
+
+    // 8. Estado Civil
     const estadoCivil = item.estado_civil || 'Não informado';
 
-    // 7. Telefone / Contato
+    // 9. Telefone / Contato
     const telefone = item.telefone || 'Não informado';
 
-    // 8. Endereço Completo
+    // 10. Endereço Completo
     const isRua =
       item.em_situacao_rua ||
       item.tipo_moradia?.toLowerCase().includes('rua') ||
@@ -160,12 +177,33 @@ export function exportAssistidosToCSV(assistidos: Assistido[]): {
       }
     }
 
-    // 9. Bairro / Localidade
+    // 11. Bairro / Localidade
     const bairroLocalidade = isRua
       ? 'Em situação de rua'
       : item.bairro || item.bairro_cras || item.endereco || 'Não informado';
 
-    // 10. Cadastro no CRAS
+    // 12. Situação de Rua
+    const situacaoRua = isRua ? 'Sim' : 'Não';
+
+    // 13. Autorização de Uso de Imagem
+    const autorizaImagemVal = (item as any).autoriza_imagem;
+    const isNaoAutorizado =
+      autorizaImagemVal === false ||
+      autorizaImagemVal === 'Não' ||
+      (item.expectativa_curso &&
+        /Autoriza[çc][ãa]o de Imagem:\s*Não/i.test(item.expectativa_curso));
+    const autorizaImagem = isNaoAutorizado ? 'Não autoriza' : 'Sim (Autorizado)';
+
+    // 14. Data de Ingresso
+    const dataIngresso = formatDate(item.data_ingresso || item.created_at);
+
+    // 15. Status do Acompanhamento
+    const statusAcompanhamento = item.status_curso || 'Ativo / Em Acompanhamento';
+
+    // 16. Fatores de Desistência / Motivo Evasão
+    const motivoEvasao = getAssistidoMotivoEvasao(item) || 'Não se aplica';
+
+    // 17. Cadastro no CRAS
     let cadastroCRAS = 'Não informado';
     if (item.possui_cras === true) {
       cadastroCRAS = item.bairro_cras?.trim()
@@ -175,25 +213,10 @@ export function exportAssistidosToCSV(assistidos: Assistido[]): {
       cadastroCRAS = 'Não possui cadastro';
     }
 
-    // 11. Escolaridade
+    // 18. Escolaridade
     const escolaridade = item.escolaridade || 'Não informada';
 
-    // 12. Composição Familiar
-    const composicao =
-      item.composicao_familiar !== undefined &&
-      item.composicao_familiar !== null &&
-      item.composicao_familiar !== ''
-        ? `${item.composicao_familiar} pessoa(s)`
-        : 'Não informada';
-
-    // 13. Filhos
-    const qtdFilhos = getAssistidoFilhos(item as any);
-    const filhos = qtdFilhos !== null ? `${qtdFilhos} filho(s)` : 'Não informado';
-
-    // 14. Atividade Remunerada
-    const atividadeRemunerada = item.atividade_remunerada || 'Não informada';
-
-    // 15. Ocupação Atual
+    // 19. Ocupação / Atividade
     let ocupacao = item.profissao || 'Não informada';
     if (ocupacao.includes('(Dias:') && ocupacao.includes('Turno:')) {
       const match = ocupacao.match(/^([^(]+)\s*\(Dias:/);
@@ -202,22 +225,75 @@ export function exportAssistidosToCSV(assistidos: Assistido[]): {
       }
     }
 
-    // 16. Faixa de Renda
+    // 20. Turno de Trabalho
+    let turno = 'Não informado';
+    if (item.profissao?.includes('Turno:')) {
+      const match = item.profissao.match(/Turno:\s*([^|)]+)/);
+      if (match && match[1]?.trim()) {
+        turno = match[1].trim();
+      }
+    }
+
+    // 21. Faixa de Renda
     const faixaRenda = getAssistidoFaixaRenda(item as any);
 
-    // 17. Programas Sociais
+    // 22. Programas Sociais
     const programasSociais = formatList(
       item.beneficios_sociais,
       'Nenhum benefício/programa social'
     );
 
-    // 18. Tipo de Moradia
+    // 23. Tipo de Moradia
     let tipoMoradia = item.tipo_moradia || 'Não informado';
     if (tipoMoradia.includes('|')) {
       tipoMoradia = tipoMoradia.split('|')[0].trim();
     }
 
-    // 19. Infraestrutura Básica
+    // 24. Composição Familiar
+    const composicao =
+      item.composicao_familiar !== undefined &&
+      item.composicao_familiar !== null &&
+      item.composicao_familiar !== ''
+        ? `${item.composicao_familiar} pessoa(s)`
+        : 'Não informada';
+
+    // 25. Quantidade de Filhos
+    const qtdFilhos = getAssistidoFilhos(item as any);
+    const filhos = qtdFilhos !== null ? `${qtdFilhos} filho(s)` : 'Não informado';
+
+    // 25.1 Membros do Núcleo Familiar
+    let membrosList: any[] = [];
+    if (Array.isArray((item as any).membros_familia) && (item as any).membros_familia.length > 0) {
+      membrosList = (item as any).membros_familia;
+    } else if (item.expectativa_curso) {
+      const match = item.expectativa_curso.match(/\[Membros da Fam[íi]lia:\s*([\s\S]*?)\]/i);
+      if (match && match[1]?.trim()) {
+        try {
+          const parsed = JSON.parse(match[1].trim());
+          if (Array.isArray(parsed)) membrosList = parsed;
+        } catch {}
+      }
+    }
+
+    const membrosFormatados =
+      membrosList.length > 0
+        ? membrosList
+            .map((m: any) => {
+              const nomeM = m.nome_membro || m.nome || 'Membro sem nome';
+              const vinc = m.vinculo || m.parentesco || 'Familiar';
+              const vincCompleto = vinc === 'Outro' && m.outro_vinculo ? `Outro: ${m.outro_vinculo}` : vinc;
+              const idadeNasc = m.data_nasc_idade ? ` - ${m.data_nasc_idade}` : '';
+              const proj = m.projeto_oficina || 'Não informado';
+              const projCompleto = proj === 'Outro' && m.outro_projeto ? `Outro: ${m.outro_projeto}` : proj;
+              return `${nomeM} (${vincCompleto}${idadeNasc} - Projeto/Oficina: ${projCompleto})`;
+            })
+            .join('; ')
+        : 'Nenhum membro dependente cadastrado';
+
+    // 26. Acesso à Internet
+    const internet = item.acesso_internet || 'Não informado';
+
+    // 27. Serviços Básicos
     const infraList: string[] = [];
     if (item.tipo_moradia?.includes('|')) {
       const parts = item.tipo_moradia.split('|').map((p) => p.trim());
@@ -242,10 +318,7 @@ export function exportAssistidosToCSV(assistidos: Assistido[]): {
       }
     }
 
-    // 20. Acesso à Internet
-    const internet = item.acesso_internet || 'Não informado';
-
-    // 21. Condições de Saúde na Família
+    // 28. Condições de Saúde na Família
     const saudeList: string[] = [];
     if (Array.isArray(item.doencas_cronicas_familia)) {
       const valid = item.doencas_cronicas_familia.filter(
@@ -272,25 +345,19 @@ export function exportAssistidosToCSV(assistidos: Assistido[]): {
     const saudeFamilia =
       saudeList.length > 0 ? saudeList.join('; ') : 'Nenhuma condição registrada';
 
-    // 22. Dificuldades Enfrentadas pela Família
+    // 29. Dificuldades Enfrentadas pela Família
     const dificuldades = formatList(
       item.dificuldades_enfrentadas,
       'Nenhuma dificuldade registrada'
     );
 
-    // 23. Rede de Apoio Principal
+    // 30. Rede de Apoio Principal
     const redeApoio = item.rede_apoio || 'Não informada';
 
-    // 24. Serviços FLH Utilizados
-    const servicosFLH = formatList(
-      item.servicos_acompanhamento,
-      'Nenhum / Nunca utilizou'
-    );
-
-    // 25. Oficina Pretendida
+    // 31. Oficina Pretendida
     const oficina = item.curso_pretendido || 'Nenhuma oficina vinculada';
 
-    // 26. Objetivos Pós-Oficina / O que Pretende Fazer
+    // 32. Objetivos Futuros / Pós-Oficina
     let objetivos = item.objetivo_profissional_3_meses || '';
     if (!objetivos && item.expectativa_curso?.includes('Pretende:')) {
       const match = item.expectativa_curso.match(/Pretende:\s*([^|]+)/);
@@ -305,49 +372,40 @@ export function exportAssistidosToCSV(assistidos: Assistido[]): {
       objetivos = 'Não informado';
     }
 
-    // 27. Data de Ingresso
-    const dataIngresso = formatDate(item.data_ingresso || item.created_at);
-
-    // 28. Status do Acompanhamento
-    const statusAcompanhamento = item.status_curso || 'Ativo / Em Acompanhamento';
-
-    // 29. Motivo da Evasão / Desistência
-    const motivoEvasao = getAssistidoMotivoEvasao(item) || 'Não se aplica';
-
-    // 30. Pendente Avaliação 4 Meses?
-    const pendente4Meses = isPendenteAvaliacao4Meses(item) ? 'Sim' : 'Não';
-
     return [
       escapeCSV(nome),
       escapeCSV(cpf),
       escapeCSV(rg),
+      escapeCSV(cartaoSus),
+      escapeCSV(idade),
+      escapeCSV(dataNasc),
       escapeCSV(racaCor),
-      escapeCSV(idadeDataNasc),
       escapeCSV(estadoCivil),
       escapeCSV(telefone),
       escapeCSV(enderecoCompleto),
       escapeCSV(bairroLocalidade),
-      escapeCSV(cadastroCRAS),
-      escapeCSV(escolaridade),
-      escapeCSV(composicao),
-      escapeCSV(filhos),
-      escapeCSV(atividadeRemunerada),
-      escapeCSV(ocupacao),
-      escapeCSV(faixaRenda),
-      escapeCSV(programasSociais),
-      escapeCSV(tipoMoradia),
-      escapeCSV(infraestrutura),
-      escapeCSV(internet),
-      escapeCSV(saudeFamilia),
-      escapeCSV(dificuldades),
-      escapeCSV(redeApoio),
-      escapeCSV(servicosFLH),
-      escapeCSV(oficina),
-      escapeCSV(objetivos),
+      escapeCSV(situacaoRua),
+      escapeCSV(autorizaImagem),
       escapeCSV(dataIngresso),
       escapeCSV(statusAcompanhamento),
       escapeCSV(motivoEvasao),
-      escapeCSV(pendente4Meses)
+      escapeCSV(cadastroCRAS),
+      escapeCSV(escolaridade),
+      escapeCSV(ocupacao),
+      escapeCSV(turno),
+      escapeCSV(faixaRenda),
+      escapeCSV(programasSociais),
+      escapeCSV(tipoMoradia),
+      escapeCSV(composicao),
+      escapeCSV(filhos),
+      escapeCSV(membrosFormatados),
+      escapeCSV(internet),
+      escapeCSV(infraestrutura),
+      escapeCSV(saudeFamilia),
+      escapeCSV(dificuldades),
+      escapeCSV(redeApoio),
+      escapeCSV(oficina),
+      escapeCSV(objetivos)
     ];
   });
 
