@@ -34,14 +34,20 @@
 begin;
 
 -- 1) Papel do usuário logado, apenas se ativo -------------------------
-create or replace function public.papel_atual()
-returns public.user_role
+-- Retorna texto (e não o enum user_role) para funcionar tanto em bancos
+-- onde profiles.role é enum quanto onde é texto. O drop ... cascade
+-- remove também as políticas que dependem da função; todas são
+-- recriadas logo abaixo, então o script pode ser rodado de novo.
+drop function if exists public.papel_atual() cascade;
+
+create function public.papel_atual()
+returns text
 language sql
 stable
 security definer
 set search_path = public
 as $$
-  select p.role
+  select p.role::text
   from public.profiles p
   where p.id = auth.uid()
     and coalesce(p.status::text, 'ativo') <> 'inativo'
