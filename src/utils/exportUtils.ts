@@ -2,7 +2,7 @@ import { Assistido } from '../types/assistido';
 import {
   getAssistidoFaixaRenda,
   getAssistidoFilhos
-} from '../pages/Dashboard';
+} from './camposAssistido';
 import {
   getAssistidoMotivoEvasao,
   isPendenteAvaliacao4Meses
