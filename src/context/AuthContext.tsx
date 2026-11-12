@@ -3,7 +3,6 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase/client';
 import {
   UserRole,
-  parseUserRole,
   getUserDisplayName,
   getRoleCargo,
   getRoleShortLabel,
@@ -47,14 +46,14 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   profile: null,
   loading: true,
-  role: 'admin',
+  role: 'recepcao',
   displayName: 'Operador Social',
-  roleCargo: 'Diretoria / Administrador',
-  roleShortLabel: 'Diretoria',
-  canEdit: true,
-  canDelete: true,
-  canEvaluate: true,
-  canManageTeam: true,
+  roleCargo: 'Recepção / Voluntário',
+  roleShortLabel: 'Recepção',
+  canEdit: false,
+  canDelete: false,
+  canEvaluate: false,
+  canManageTeam: false,
   refreshProfile: async () => {},
   setSimulatedRole: () => {}
 });
@@ -107,29 +106,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
 
-      // Se o perfil ainda não existir na tabela profiles, realiza o auto-cadastro inicial
-      const initialRole = parseUserRole(activeUser);
-      const initialCargo = getRoleCargo(initialRole);
-      const initialNome = getUserDisplayName(activeUser);
-
-      const newRecord: ProfileRecord = {
-        id: activeUser.id,
-        email: activeUser.email,
-        nome: initialNome,
-        role: initialRole,
-        cargo: initialCargo,
-        status: 'ativo',
-        ativo: true
-      };
-
-      try {
-        const { ativo, ...dbPayload } = newRecord;
-        await supabase.from('profiles').upsert([dbPayload]);
-      } catch (upsertErr) {
-        console.warn('Auto-registro na tabela profiles:', upsertErr);
+      // Consulta bem-sucedida, mas sem perfil: a conta não foi cadastrada
+      // pela Diretoria (ex.: criada pelo cadastro público). Sem acesso.
+      if (!error && !data) {
+        try {
+          sessionStorage.setItem(
+            'lar_harmonia_login_aviso',
+            'Sua conta não está vinculada à equipe. Peça à Diretoria para cadastrá-la.'
+          );
+        } catch {}
+        await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        return;
       }
 
-      setProfile(newRecord);
+      if (error) {
+        console.warn('Erro ao consultar tabela profiles:', error);
+      }
     } catch (err) {
       console.warn('Erro ao consultar tabela profiles:', err);
     }
@@ -238,21 +233,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [user]);
 
-  // Papel (role) definido com prioridade pela tabela 'public.profiles'
+  // Papel (role) vem exclusivamente da tabela 'public.profiles', que só a
+  // Diretoria pode alterar (garantido pelo RLS). Sem perfil carregado,
+  // aplica o menor privilégio — o banco recusaria as ações de qualquer forma.
   const role = useMemo<UserRole>(() => {
-    if (profile?.role) {
-      if (profile.role === 'admin') return 'admin';
-      if (profile.role === 'recepcao') return 'recepcao';
-      if (profile.role === 'servico_social') return 'servico_social';
-    }
-    if (profile?.cargo) {
-      const c = profile.cargo.toLowerCase();
-      if (c.includes('admin') || c.includes('diretor')) return 'admin';
-      if (c.includes('recep') || c.includes('volunt')) return 'recepcao';
-      if (c.includes('social') || c.includes('assist')) return 'servico_social';
-    }
-    return parseUserRole(user);
-  }, [profile, user]);
+    if (profile?.role === 'admin') return 'admin';
+    if (profile?.role === 'servico_social') return 'servico_social';
+    return 'recepcao';
+  }, [profile]);
 
   // Nome de exibição definido pela tabela 'public.profiles'
   const displayName = useMemo(() => {

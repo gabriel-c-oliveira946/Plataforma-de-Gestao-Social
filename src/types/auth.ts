@@ -73,20 +73,10 @@ export function parseUserRole(user: User | null): UserRole {
     return 'recepcao';
   }
 
-  // 3. Fallback baseado no e-mail
-  const email = (user.email || '').toLowerCase().trim();
-  if (email.includes('admin') || email.includes('diretoria') || email.includes('gabriel')) {
-    return 'admin';
-  }
-  if (email.includes('social') || email.includes('assistente')) {
-    return 'servico_social';
-  }
-  if (email.includes('recepcao') || email.includes('voluntario') || email.includes('triagem')) {
-    return 'recepcao';
-  }
-
-  // Padrão do sistema: Diretoria / Admin se for o usuário principal
-  return 'admin';
+  // Sem cargo identificado: menor privilégio. O cargo que vale para
+  // permissões é sempre o da tabela profiles (controlada pelo admin);
+  // user_metadata pode ser editado pelo próprio usuário.
+  return 'recepcao';
 }
 
 /**

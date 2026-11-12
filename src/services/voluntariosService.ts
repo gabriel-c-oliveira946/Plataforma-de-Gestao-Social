@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase/client';
+import { supabase, MODO_LOCAL } from '../lib/supabase/client';
 import { Voluntario } from '../types/voluntario';
 
 const LOCAL_STORAGE_KEY = 'lar_harmonia_voluntarios_store';
@@ -130,117 +130,102 @@ function saveStoredVoluntarios(items: Voluntario[]): void {
   }
 }
 
-export const voluntariosService = {
-  // 1. Buscar todos os voluntários (com fallback Supabase -> localStorage)
-  async getAll(): Promise<Voluntario[]> {
-    try {
-      const hasUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL;
-      if (hasUrl) {
-        const { data, error } = await supabase
-          .from('voluntarios')
-          .select('*')
-          .order('created_at', { ascending: false });
+function erroSupabase(acao: string, error: { message?: string } | null): Error {
+  console.error(`Erro ao ${acao} no Supabase:`, error);
+  return new Error(error?.message || `Não foi possível ${acao}. Verifique sua conexão e tente novamente.`);
+}
 
-        if (!error && Array.isArray(data) && data.length > 0) {
-          saveStoredVoluntarios(data);
-          return data;
-        }
-      }
-    } catch (err) {
-      console.warn('Supabase não acessível para voluntários, usando cache local:', err);
-    }
-    return getStoredVoluntarios();
+/**
+ * Com o Supabase configurado, todas as operações vão direto ao banco e
+ * qualquer falha é repassada para a tela. O armazenamento local (com dados
+ * de exemplo) é usado apenas em MODO_LOCAL (desenvolvimento).
+ */
+export const voluntariosService = {
+  // 1. Buscar todos os voluntários
+  async getAll(): Promise<Voluntario[]> {
+    if (MODO_LOCAL) return getStoredVoluntarios();
+
+    const { data, error } = await supabase
+      .from('voluntarios')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw erroSupabase('carregar os voluntários', error);
+    return data || [];
   },
 
   // 2. Inserir novo voluntário
   async insert(item: Record<string, any>): Promise<Voluntario> {
     const isProvidedIdValid = isValidUUID(item.id);
-    const generatedId = generateUUID();
-    const newId = isProvidedIdValid ? item.id : generatedId;
     const nowIso = new Date().toISOString();
 
     const fullRecord: Voluntario = {
       ...(item as Voluntario),
-      id: newId,
+      id: isProvidedIdValid ? item.id : generateUUID(),
       status: item.status || 'ativo',
       created_at: item.created_at || nowIso,
       updated_at: item.updated_at || nowIso,
       nome_completo: item.nome_completo || ''
     };
 
-    const hasUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL;
-    if (hasUrl) {
-      const supabasePayload: Record<string, any> = { ...fullRecord };
-      if (!isProvidedIdValid) {
-        delete supabasePayload.id;
-      }
-
-      const { data, error } = await supabase.from('voluntarios').insert([supabasePayload]).select();
-      if (!error && data && data[0]) {
-        const current = getStoredVoluntarios();
-        saveStoredVoluntarios([data[0], ...current.filter((v) => v.id !== data[0].id)]);
-        return data[0];
-      } else if (error) {
-        console.warn('Alerta Supabase ao inserir voluntário (utilizando fallback local):', error.message);
-      }
+    if (MODO_LOCAL) {
+      const current = getStoredVoluntarios();
+      saveStoredVoluntarios([fullRecord, ...current.filter((v) => v.id !== fullRecord.id)]);
+      return fullRecord;
     }
 
-    const current = getStoredVoluntarios();
-    const updated = [fullRecord, ...current.filter((v) => v.id !== fullRecord.id)];
-    saveStoredVoluntarios(updated);
-    return fullRecord;
+    const supabasePayload: Record<string, any> = { ...fullRecord };
+    if (!isProvidedIdValid) delete supabasePayload.id;
+
+    const { data, error } = await supabase.from('voluntarios').insert([supabasePayload]).select();
+    if (error) throw erroSupabase('cadastrar o voluntário', error);
+    if (!data || !data[0]) {
+      throw new Error('O cadastro não foi confirmado pelo banco de dados. Verifique se sua conta tem permissão.');
+    }
+    return data[0];
   },
 
   // 3. Atualizar voluntário existente
   async update(id: string, updates: Record<string, any>): Promise<Voluntario> {
     const nowIso = new Date().toISOString();
-    let updatedRecord: Voluntario | null = null;
 
-    try {
-      const hasUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL;
-      if (hasUrl && isValidUUID(id)) {
-        const { data, error } = await supabase
-          .from('voluntarios')
-          .update({ ...updates, updated_at: nowIso })
-          .eq('id', id)
-          .select();
-
-        if (!error && data && data[0]) {
-          updatedRecord = data[0];
-        }
-      }
-    } catch (err) {
-      console.warn('Supabase indisponível no update de voluntário, atualizando localmente:', err);
-    }
-
-    const current = getStoredVoluntarios();
-    const existing = current.find((v) => v.id === id);
-    if (!updatedRecord) {
-      updatedRecord = {
+    if (MODO_LOCAL) {
+      const current = getStoredVoluntarios();
+      const existing = current.find((v) => v.id === id);
+      const updatedRecord = {
         ...(existing || ({} as Voluntario)),
         ...updates,
         id,
         updated_at: nowIso
       } as Voluntario;
+      saveStoredVoluntarios(current.map((v) => (v.id === id ? updatedRecord : v)));
+      return updatedRecord;
     }
 
-    const newStore = current.map((v) => (v.id === id ? updatedRecord! : v));
-    saveStoredVoluntarios(newStore);
-    return updatedRecord;
+    const { data, error } = await supabase
+      .from('voluntarios')
+      .update({ ...updates, updated_at: nowIso })
+      .eq('id', id)
+      .select();
+
+    if (error) throw erroSupabase('salvar o voluntário', error);
+    if (!data || !data[0]) {
+      throw new Error('As alterações não foram salvas: seu perfil não tem permissão para editar este voluntário.');
+    }
+    return data[0];
   },
 
   // 4. Excluir voluntário
   async delete(id: string): Promise<void> {
-    const hasUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL;
-    if (hasUrl && isValidUUID(id)) {
-      try {
-        await supabase.from('voluntarios').delete().eq('id', id);
-      } catch (err) {
-        console.warn('Erro ao excluir no Supabase:', err);
-      }
+    if (MODO_LOCAL) {
+      saveStoredVoluntarios(getStoredVoluntarios().filter((v) => v.id !== id));
+      return;
     }
 
-    const current = getStoredVoluntarios();
-    saveStoredVoluntarios(current.filter((v) => v.id !== id));
+    const { data, error } = await supabase.from('voluntarios').delete().eq('id', id).select('id');
+    if (error) throw erroSupabase('excluir o voluntário', error);
+    if (!data || data.length === 0) {
+      throw new Error('O voluntário não foi excluído: apenas a Diretoria pode excluir voluntários.');
+    }
   }
 };

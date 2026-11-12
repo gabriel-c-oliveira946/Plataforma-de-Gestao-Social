@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase/client';
+import { supabase, MODO_LOCAL } from '../lib/supabase/client';
 import { Assistido } from '../components/VerFichaModal';
 
 const LOCAL_STORAGE_KEY = 'lar_harmonia_assistidos_store';
@@ -423,144 +423,123 @@ function sanitizePayloadForSupabase(payload: Record<string, any>): Record<string
   return clean;
 }
 
-export const assistidosService = {
-  // 1. Obter todos os assistidos com fallback seguro
-  async getAll(): Promise<Assistido[]> {
-    try {
-      const hasUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL;
-      if (hasUrl) {
-        const { data, error } = await supabase
-          .from('assistidos')
-          .select('*')
-          .order('created_at', { ascending: false });
+function erroSupabase(acao: string, error: { message?: string } | null): Error {
+  console.error(`Erro ao ${acao} no Supabase:`, error);
+  return new Error(error?.message || `Não foi possível ${acao}. Verifique sua conexão e tente novamente.`);
+}
 
-        if (!error && Array.isArray(data) && data.length > 0) {
-          const normalizedData = data.map(normalizeAssistido);
-          saveStoredAssistidos(normalizedData);
-          return normalizedData;
-        }
-      }
-    } catch (err) {
-      console.warn('Supabase não acessível, utilizando banco de dados local com sucesso:', err);
-    }
-    return getStoredAssistidos();
+/**
+ * Com o Supabase configurado, todas as operações vão direto ao banco e
+ * qualquer falha é repassada para a tela (nada é salvo "só no navegador").
+ * O armazenamento local é usado apenas em MODO_LOCAL (desenvolvimento).
+ */
+export const assistidosService = {
+  // 1. Obter todos os assistidos
+  async getAll(): Promise<Assistido[]> {
+    if (MODO_LOCAL) return getStoredAssistidos();
+
+    const { data, error } = await supabase
+      .from('assistidos')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw erroSupabase('carregar os assistidos', error);
+    return (data || []).map(normalizeAssistido);
   },
 
   // 2. Inserir novo assistido
   async insert(item: Record<string, any>): Promise<Assistido> {
     const isProvidedIdValid = isValidUUID(item.id);
-    const generatedId = generateUUID();
-    const newId = isProvidedIdValid ? item.id : generatedId;
     const nowIso = new Date().toISOString();
     const fullRecord: Assistido = normalizeAssistido({
       ...(item as Assistido),
-      id: newId,
+      id: isProvidedIdValid ? item.id : generateUUID(),
       created_at: item.created_at || nowIso,
       updated_at: item.updated_at || nowIso,
       nome_completo: item.nome_completo || ''
     });
 
-    const hasUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL;
-    if (hasUrl) {
-      // Cria o payload limpo e sanitizado para o Supabase
-      const supabasePayload: Record<string, any> = sanitizePayloadForSupabase(fullRecord);
-      // Se não for um UUID válido fornecido explicitamente, omitimos o campo 'id'
-      // para permitir que o PostgreSQL gere o UUID automaticamente via gen_random_uuid()
-      if (!isProvidedIdValid) {
-        delete supabasePayload.id;
-      }
-
-      let { data, error } = await supabase.from('assistidos').insert([supabasePayload]).select();
-      if (error && (error.code === 'PGRST204' || error.message?.includes('schema cache')) && supabasePayload.membros_familia) {
-        const fallbackPayload = { ...supabasePayload };
-        delete fallbackPayload.membros_familia;
-        const retry = await supabase.from('assistidos').insert([fallbackPayload]).select();
-        data = retry.data;
-        error = retry.error;
-      }
-      if (error) {
-        console.error('Erro ao inserir assistido no Supabase:', error);
-        throw new Error(error.message || 'Erro ao registrar assistido no Supabase.');
-      }
-      if (data && data[0]) {
-        const normalized = normalizeAssistido({ ...fullRecord, ...data[0] });
-        const current = getStoredAssistidos();
-        saveStoredAssistidos([normalized, ...current.filter((a) => a.id !== normalized.id)]);
-        return normalized;
-      }
+    if (MODO_LOCAL) {
+      const current = getStoredAssistidos();
+      saveStoredAssistidos([fullRecord, ...current.filter((a) => a.id !== fullRecord.id)]);
+      return fullRecord;
     }
 
-    // Salva localmente caso não haja conexão/URL do Supabase configurada
-    const current = getStoredAssistidos();
-    const updated = [fullRecord, ...current.filter((a) => a.id !== fullRecord.id)];
-    saveStoredAssistidos(updated);
-    return fullRecord;
+    // Cria o payload limpo e sanitizado para o Supabase. Sem UUID válido
+    // fornecido, o PostgreSQL gera o id via gen_random_uuid().
+    const supabasePayload: Record<string, any> = sanitizePayloadForSupabase(fullRecord);
+    if (!isProvidedIdValid) delete supabasePayload.id;
+
+    let { data, error } = await supabase.from('assistidos').insert([supabasePayload]).select();
+    if (error && (error.code === 'PGRST204' || error.message?.includes('schema cache')) && supabasePayload.membros_familia) {
+      const fallbackPayload = { ...supabasePayload };
+      delete fallbackPayload.membros_familia;
+      const retry = await supabase.from('assistidos').insert([fallbackPayload]).select();
+      data = retry.data;
+      error = retry.error;
+    }
+    if (error) throw erroSupabase('registrar o assistido', error);
+    if (!data || !data[0]) {
+      throw new Error('O cadastro não foi confirmado pelo banco de dados. Verifique se sua conta tem permissão.');
+    }
+    return normalizeAssistido({ ...fullRecord, ...data[0] });
   },
 
   // 3. Atualizar assistido existente
   async update(id: string, updates: Record<string, any>): Promise<Assistido> {
     const nowIso = new Date().toISOString();
-    let updatedRecord: Assistido | null = null;
 
-    try {
-      const hasUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL;
-      if (hasUrl && isValidUUID(id)) {
-        const supabaseUpdates = sanitizePayloadForSupabase(updates);
-        let { data, error } = await supabase
-          .from('assistidos')
-          .update({ ...supabaseUpdates, updated_at: nowIso })
-          .eq('id', id)
-          .select();
-
-        if (error && (error.code === 'PGRST204' || error.message?.includes('schema cache')) && supabaseUpdates.membros_familia) {
-          const fallbackUpdates = { ...supabaseUpdates };
-          delete fallbackUpdates.membros_familia;
-          const retry = await supabase
-            .from('assistidos')
-            .update({ ...fallbackUpdates, updated_at: nowIso })
-            .eq('id', id)
-            .select();
-          data = retry.data;
-          error = retry.error;
-        }
-
-        if (!error && data && data[0]) {
-          updatedRecord = normalizeAssistido({ ...updates, ...data[0] });
-        }
-      }
-    } catch (err) {
-      console.warn('Supabase indisponível no update, atualizando localmente:', err);
-    }
-
-    const current = getStoredAssistidos();
-    const existing = current.find((a) => a.id === id);
-    if (!updatedRecord) {
-      updatedRecord = normalizeAssistido({
+    if (MODO_LOCAL) {
+      const current = getStoredAssistidos();
+      const existing = current.find((a) => a.id === id);
+      const updatedRecord = normalizeAssistido({
         ...(existing || ({} as Assistido)),
         ...updates,
         id,
         updated_at: nowIso
       } as Assistido);
+      saveStoredAssistidos(current.map((a) => (a.id === id ? updatedRecord : a)));
+      return updatedRecord;
     }
 
-    const newStore = current.map((a) => (a.id === id ? updatedRecord! : a));
-    saveStoredAssistidos(newStore);
-    return updatedRecord;
+    const supabaseUpdates = sanitizePayloadForSupabase(updates);
+    let { data, error } = await supabase
+      .from('assistidos')
+      .update({ ...supabaseUpdates, updated_at: nowIso })
+      .eq('id', id)
+      .select();
+
+    if (error && (error.code === 'PGRST204' || error.message?.includes('schema cache')) && supabaseUpdates.membros_familia) {
+      const fallbackUpdates = { ...supabaseUpdates };
+      delete fallbackUpdates.membros_familia;
+      const retry = await supabase
+        .from('assistidos')
+        .update({ ...fallbackUpdates, updated_at: nowIso })
+        .eq('id', id)
+        .select();
+      data = retry.data;
+      error = retry.error;
+    }
+
+    if (error) throw erroSupabase('salvar as alterações', error);
+    // Sem erro e sem linhas: o RLS recusou a edição (ex.: perfil Recepção)
+    if (!data || !data[0]) {
+      throw new Error('As alterações não foram salvas: seu perfil não tem permissão para editar esta ficha.');
+    }
+    return normalizeAssistido({ ...updates, ...data[0] });
   },
 
   // 4. Excluir assistido
   async delete(id: string): Promise<void> {
-    const hasUrl = typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL;
-    if (hasUrl) {
-      const { error } = await supabase.from('assistidos').delete().eq('id', id);
-      if (error) {
-        console.error('Erro ao excluir assistido no Supabase:', error);
-        throw new Error(error.message);
-      }
+    if (MODO_LOCAL) {
+      saveStoredAssistidos(getStoredAssistidos().filter((a) => a.id !== id));
+      return;
     }
 
-    // Apenas remova o registro do localStorage se o Supabase confirmar a exclusão com sucesso.
-    const current = getStoredAssistidos();
-    saveStoredAssistidos(current.filter((a) => a.id !== id));
+    const { data, error } = await supabase.from('assistidos').delete().eq('id', id).select('id');
+    if (error) throw erroSupabase('excluir o assistido', error);
+    if (!data || data.length === 0) {
+      throw new Error('A ficha não foi excluída: apenas a Diretoria pode excluir assistidos.');
+    }
   }
 };

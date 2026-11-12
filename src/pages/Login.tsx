@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Eye,
@@ -19,12 +19,9 @@ import { supabase } from '../lib/supabase/client';
 import { useTheme } from '../context/ThemeContext';
 import {
   resolveEmailFromUsername,
-  saveMembroLocal,
-  isUsuarioInativo,
   getMensagemDesativacao,
   limparCacheBloqueioLocal
 } from '../utils/equipe';
-import { getUserDisplayName, parseUserRole, getRoleCargo } from '../types/auth';
 import logoLarHarmonia from '../assets/images/regenerated_image_1790687724025.png';
 
 export default function Login() {
@@ -37,6 +34,17 @@ export default function Login() {
   const [showDetalhesModal, setShowDetalhesModal] = useState(false);
   const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
+
+  // Aviso deixado pelo AuthContext ao encerrar uma sessão sem perfil na equipe
+  useEffect(() => {
+    try {
+      const aviso = sessionStorage.getItem('lar_harmonia_login_aviso');
+      if (aviso) {
+        setError(aviso);
+        sessionStorage.removeItem('lar_harmonia_login_aviso');
+      }
+    } catch {}
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,249 +66,73 @@ export default function Login() {
     setLoading(true);
 
     try {
-      let targetEmail = cleanInput;
-
-      // 1. Se NÃO contiver '@', consultar Supabase (perfis / registros) para localizar o e-mail
+      // 1. Nome de usuário (sem '@'): resolve o e-mail pela função segura do banco
+      let targetEmail = cleanInput.toLowerCase();
       if (!cleanInput.includes('@')) {
         const resolved = await resolveEmailFromUsername(cleanInput);
         if (!resolved) {
-          setError(
-            'Nome de usuário não localizado no sistema. Verifique a digitação ou utilize o e-mail completo.'
-          );
-          setLoading(false);
+          setError('E-mail/usuário ou senha incorretos.');
           return;
         }
         targetEmail = resolved;
       }
 
-      // Verificação prévia na tabela 'profiles' do Supabase buscando pelo e-mail antes do login
-      try {
-        const { data: preProfile } = await supabase
-          .from('profiles')
-          .select('id, email, status, ativo, cargo, mensagem_desativacao')
-          .ilike('email', targetEmail)
-          .maybeSingle();
-
-        if (preProfile) {
-          // Se o perfil está expressamente ativo no Supabase, limpa qualquer trava residual em cache local
-          if (
-            preProfile.status === 'ativo' &&
-            preProfile.ativo !== false &&
-            preProfile.cargo !== 'Inativo'
-          ) {
-            limparCacheBloqueioLocal(preProfile.id, targetEmail, cleanInput);
-          } else if (
-            preProfile.status === 'inativo' ||
-            preProfile.ativo === false ||
-            preProfile.cargo === 'Inativo'
-          ) {
-            await supabase.auth.signOut();
-            setError('Sua conta foi desativada pela administração. Entre em contato com a diretoria.');
-            const customMsg =
-              preProfile.mensagem_desativacao ||
-              getMensagemDesativacao(targetEmail) ||
-              getMensagemDesativacao(cleanInput);
-            if (customMsg && customMsg.trim()) {
-              setDetalhesMensagem(customMsg.trim());
-            }
-            setLoading(false);
-            return;
-          }
-        }
-      } catch (preErr) {
-        console.warn('Verificação prévia de profiles em Login:', preErr);
-      }
-
-      // Verificação prévia de conta desativada (se constar na lista persistente)
-      if (isUsuarioInativo(targetEmail) || isUsuarioInativo(cleanInput)) {
-        const msg =
-          getMensagemDesativacao(targetEmail) ||
-          getMensagemDesativacao(cleanInput);
-
-        setError('Sua conta foi desativada pela administração. Entre em contato com a diretoria.');
-        if (msg && msg.trim()) {
-          setDetalhesMensagem(msg.trim());
-        }
-        setLoading(false);
-        return;
-      }
-
-      // 2. Realizar autenticação no Supabase Auth com o e-mail identificado
-      let { error: signInError } = await supabase.auth.signInWithPassword({
+      // 2. Autenticação no Supabase Auth
+      const { error: signInError } = await supabase.auth.signInWithPassword({
         email: targetEmail,
         password
       });
 
-      // Tentativa de fallback para usuário admin caso tente credencial alternativa
-      if (
-        signInError &&
-        !cleanInput.includes('@') &&
-        ['admin', 'administrador', 'diretoria'].includes(cleanInput.toLowerCase()) &&
-        targetEmail !== 'admin@larharmonia.org'
-      ) {
-        const altAttempt = await supabase.auth.signInWithPassword({
-          email: 'admin@larharmonia.org',
-          password
-        });
-        if (!altAttempt.error) {
-          signInError = null;
-        }
-      }
-
       if (signInError) {
-        // Antes de retornar erro genérico de credenciais, checar se a conta está desativada no Supabase
-        try {
-          const { data: checkProf } = await supabase
-            .from('profiles')
-            .select('id, email, status, ativo, cargo, mensagem_desativacao')
-            .ilike('email', targetEmail)
-            .maybeSingle();
-
-          if (
-            checkProf &&
-            (checkProf.status === 'inativo' ||
-              checkProf.ativo === false ||
-              checkProf.cargo === 'Inativo')
-          ) {
-            await supabase.auth.signOut();
-            setError('Sua conta foi desativada pela administração. Entre em contato com a diretoria.');
-            const msg =
-              checkProf.mensagem_desativacao ||
-              getMensagemDesativacao(targetEmail) ||
-              getMensagemDesativacao(cleanInput);
-            if (msg && msg.trim()) {
-              setDetalhesMensagem(msg.trim());
-            }
-            setLoading(false);
-            return;
-          }
-        } catch {}
-
-        if (isUsuarioInativo(targetEmail) || isUsuarioInativo(cleanInput)) {
-          const msg =
-            getMensagemDesativacao(targetEmail) ||
-            getMensagemDesativacao(cleanInput);
-          setError('Sua conta foi desativada pela administração. Entre em contato com a diretoria.');
-          if (msg && msg.trim()) {
-            setDetalhesMensagem(msg.trim());
-          }
-          setLoading(false);
-          return;
-        }
-
-        if (
-          signInError.message.toLowerCase().includes('invalid login credentials') ||
-          signInError.message.toLowerCase().includes('invalid')
-        ) {
+        const msg = signInError.message.toLowerCase();
+        if (msg.includes('invalid')) {
           setError('E-mail/usuário ou senha incorretos.');
+        } else if (msg.includes('email not confirmed')) {
+          setError('E-mail ainda não confirmado. Verifique sua caixa de entrada.');
         } else {
-          setError(
-            'Não foi possível autenticar no sistema. Verifique suas credenciais e tente novamente.'
-          );
+          setError('Não foi possível autenticar no sistema. Verifique suas credenciais e tente novamente.');
         }
-        setLoading(false);
         return;
       }
 
-      // 3. LEITURA OBRIGATÓRIA NO LOGIN:
-      // Consulta a tabela 'profiles' no Supabase buscando pelo e-mail ou ID do usuário
+      // 3. Perfil na equipe (cargo e situação são definidos pela Diretoria)
       const { data: authData } = await supabase.auth.getUser();
       const authenticatedUser = authData?.user;
-
       if (!authenticatedUser) {
         setError('Não foi possível carregar a sessão autenticada.');
-        setLoading(false);
         return;
       }
 
-      let profileData: any = null;
-      try {
-        // Busca direta pelo ID na tabela 'profiles'
-        const { data: byId, error: errById } = await supabase
-          .from('profiles')
-          .select('id, email, status, ativo, cargo, role, nome, mensagem_desativacao')
-          .eq('id', authenticatedUser.id)
-          .maybeSingle();
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, status, cargo, role, nome, mensagem_desativacao')
+        .eq('id', authenticatedUser.id)
+        .maybeSingle();
 
-        if (!errById && byId) {
-          profileData = byId;
-        } else if (authenticatedUser.email) {
-          // Busca secundária por e-mail na tabela 'profiles'
-          const { data: byEmail } = await supabase
-            .from('profiles')
-            .select('id, email, status, ativo, cargo, role, nome, mensagem_desativacao')
-            .ilike('email', authenticatedUser.email)
-            .maybeSingle();
-          profileData = byEmail;
-        }
-      } catch (queryErr) {
-        console.warn('Erro ao consultar tabela profiles no login:', queryErr);
-      }
-
-      // Se o perfil no Supabase retornar status === 'inativo' ou ativo === false
-      const hasRemoteProfile = !!profileData;
-      let isAccountInactive = false;
-
-      if (hasRemoteProfile) {
-        if (
-          profileData.status === 'inativo' ||
-          profileData.ativo === false ||
-          profileData.cargo === 'Inativo'
-        ) {
-          isAccountInactive = true;
-        } else if (profileData.status === 'ativo' || profileData.ativo === true) {
-          // Garante limpeza de resíduos locais caso estivesse inativo anteriormente
-          limparCacheBloqueioLocal(authenticatedUser.id, authenticatedUser.email, targetEmail);
-          isAccountInactive = false;
-        }
-      } else {
-        // Fallback caso a tabela profiles não retorne registro
-        isAccountInactive =
-          isUsuarioInativo(authenticatedUser) ||
-          isUsuarioInativo(targetEmail) ||
-          isUsuarioInativo(cleanInput);
-      }
-
-      if (isAccountInactive) {
-        // a) Realize o logout imediato:
+      if (profileError) {
         await supabase.auth.signOut();
+        setError('Não foi possível verificar seu perfil de acesso. Tente novamente em instantes.');
+        return;
+      }
 
-        // b) Exiba a mensagem genérica em destaque vermelho na tela de Login:
+      if (!profileData) {
+        await supabase.auth.signOut();
+        setError('Sua conta não está vinculada à equipe. Peça à Diretoria para cadastrá-la.');
+        return;
+      }
+
+      if (profileData.status === 'inativo' || profileData.cargo === 'Inativo') {
+        await supabase.auth.signOut();
         setError('Sua conta foi desativada pela administração. Entre em contato com a diretoria.');
-
-        // c) Se houver uma mensagem_desativacao cadastrada na tabela 'profiles', exiba essa mensagem personalizada:
-        const customMsg =
-          profileData?.mensagem_desativacao ||
-          (authenticatedUser ? getMensagemDesativacao(authenticatedUser.id) : null) ||
-          (authenticatedUser ? getMensagemDesativacao(authenticatedUser.email) : null) ||
-          getMensagemDesativacao(targetEmail) ||
-          getMensagemDesativacao(cleanInput) ||
-          (authenticatedUser?.user_metadata?.mensagem_desativacao as string | undefined) ||
-          null;
-
+        const customMsg = profileData.mensagem_desativacao || getMensagemDesativacao(authenticatedUser.id);
         if (customMsg && customMsg.trim()) {
           setDetalhesMensagem(customMsg.trim());
         }
-
-        // d) Não limpe os avisos da tela nem ignore a mensagem.
-        setLoading(false);
         return;
       }
 
-      // 4. Registro do operador ativo para acelerar consultas futuras por username
-      try {
-        saveMembroLocal({
-          id: authenticatedUser.id,
-          email: authenticatedUser.email,
-          nome: profileData?.nome || getUserDisplayName(authenticatedUser),
-          role: profileData?.role || parseUserRole(authenticatedUser),
-          cargo: profileData?.cargo || getRoleCargo(parseUserRole(authenticatedUser)),
-          status: 'ativo',
-          ativo: true
-        });
-      } catch {
-        // Ignora falhas de cache local
-      }
+      // Conta ativa: limpa travas antigas de desativação guardadas neste navegador
+      limparCacheBloqueioLocal(authenticatedUser.id, authenticatedUser.email, targetEmail);
 
       navigate('/modulos');
     } catch (err: any) {

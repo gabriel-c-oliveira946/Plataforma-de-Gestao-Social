@@ -337,20 +337,6 @@ export default function GerenciarEquipe() {
         return;
       }
 
-      try {
-        await supabase.from('profiles').upsert([
-          {
-            id: res.user?.id || `user-${Date.now()}`,
-            nome: trimmedNome,
-            email: trimmedEmail,
-            role: novoRole,
-            cargo: cargoFmt,
-            status: 'ativo',
-            ativo: true
-          }
-        ]);
-      } catch {}
-
       toast.success('Membro cadastrado', `${trimmedNome} foi adicionado à equipe.`);
       setSuccessMsg(`Membro ${trimmedNome} cadastrado com sucesso!`);
       setNovoNome('');
