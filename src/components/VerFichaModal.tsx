@@ -768,7 +768,7 @@ export const VerFichaModal: React.FC<VerFichaModalProps> = ({
         // Consulta direta na tabela 'profiles' usando o ID do operador
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, nome, cargo, role, email')
+          .select('id, nome, cargo, role')
           .in('id', idsToFetch);
 
         if (!error && data && data.length > 0) {

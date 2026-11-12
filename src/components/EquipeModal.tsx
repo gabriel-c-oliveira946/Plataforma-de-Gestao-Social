@@ -230,22 +230,6 @@ export default function EquipeModal({ isOpen, onClose }: EquipeModalProps) {
         return;
       }
 
-      // Persistência direta na tabela 'profiles' do Supabase
-      try {
-        await supabase.from('profiles').upsert([
-          {
-            id: res.user?.id || `user-${Date.now()}`,
-            nome: trimmedNome,
-            email: trimmedEmail,
-            role: novoRole,
-            cargo: cargoFormatado,
-            status: 'ativo'
-          }
-        ]);
-      } catch (upsertErr) {
-        console.warn('Erro ao atualizar profiles após cadastro:', upsertErr);
-      }
-
       setSuccessMsg(`Membro ${trimmedNome} cadastrado com sucesso!`);
       setNovoNome('');
       setNovoEmail('');

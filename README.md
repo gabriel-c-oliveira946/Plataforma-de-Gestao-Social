@@ -2,9 +2,9 @@
 
 > **Projeto de Extensão Universitária** voltado à digitalização, acolhimento socioeconômico e acompanhamento pedagógico de assistidos da **Fundação Lar Harmonia** (Salvador - BA).
 
-[![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4?style=flat-square&logo=tailwindcss)](https://tailwindcss.com/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?style=flat-square&logo=tailwindcss)](https://tailwindcss.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-Database_%26_Auth-3FCF8E?style=flat-square&logo=supabase)](https://supabase.com/)
 [![Vercel](https://img.shields.io/badge/Deploy-Vercel-000000?style=flat-square&logo=vercel)](https://vercel.com/)
 
@@ -62,10 +62,30 @@ Layout adaptado para smartphones com abas de rolagem fluida, cabeçalho compacto
 
 ## Tecnologias Utilizadas
 
-- **Front-end:** React 18, TypeScript, Vite, React Router DOM
+- **Front-end:** React 19, TypeScript, Vite, React Router DOM
 - **Estilização & UI:** Tailwind CSS, Lucide React (Ícones)
 - **Back-end & Banco de Dados:** Supabase (PostgreSQL, Row Level Security - RLS, Auth)
 - **Hospedagem & CI/CD:** Vercel
+
+---
+
+## Configuração do Supabase (segurança)
+
+As regras de acesso ficam no banco, não na tela. Em um projeto novo, no **SQL Editor**, rode em ordem (cada arquivo em uma query nova, inteiro):
+
+1. `supabase/migrations/20261112_01_funcao_papel_atual.sql`: função que identifica o cargo de quem está logado (somente perfis ativos).
+2. `supabase/migrations/20261112_02_politicas_rls.sql`: políticas RLS. Sem login, nada é acessível; só a equipe cadastrada pela Diretoria lê os dados; edição de fichas fica com Diretoria e Serviço Social; exclusão, só com a Diretoria; ninguém altera o próprio cargo.
+3. `supabase/migrations/20261112_03_resolver_login.sql`: login por nome de usuário sem expor a tabela de perfis.
+4. `supabase/migrations/20261112_04_voluntarios_hierarquia.sql`: voluntários seguem a mesma hierarquia (Recepção cadastra e consulta, sem editar).
+
+Cadastro de membros da equipe:
+
+5. Publique a Edge Function `supabase/functions/criar-membro` (Dashboard → Edge Functions → Deploy a new function → Via Editor, nome `criar-membro`, colar o arquivo `index.ts`).
+6. Depois de testar o cadastro de um membro pela tela de equipe, **desligue** *Authentication → Sign In / Providers → Allow new users to sign up*.
+
+Projeto de demonstração: rode também `supabase/demo/protecao_demo.sql` (protege a conta pública `visitante` e restaura os dados de exemplo diariamente) e `supabase/demo/voluntarios_demo.sql` (tabela de voluntários com dados fictícios).
+
+Sem as variáveis `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY`, o app roda em **modo local** com dados de exemplo no navegador (apenas para desenvolvimento).
 
 ---
 

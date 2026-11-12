@@ -8,7 +8,6 @@ import {
   mapRoleToCargoFormatado
 } from '../types/auth';
 import { supabase } from '../lib/supabase/client';
-import { createClient } from '@supabase/supabase-js';
 
 const STORAGE_KEY_EQUIPE = 'lar_harmonia_equipe_custom';
 const STORAGE_KEY_INATIVOS = 'lar_harmonia_inativos';
@@ -211,13 +210,6 @@ export function limparCacheBloqueioLocal(
     }
   } catch {}
 }
-
-const supabaseUrl =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
-  'https://placeholder-larharmonia.supabase.co';
-const supabaseAnonKey =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) ||
-  'placeholder-anon-key';
 
 /**
  * Mapa de mensagens personalizadas enviadas pela administração aos membros desativados
@@ -422,18 +414,6 @@ export function isUsuarioInativo(userOrEmailOrId: any): boolean {
 }
 
 /**
- * Cliente isolado para criação de novos usuários no Supabase Auth.
- * `persistSession: false` garante que a sessão do admin logado não seja substituída ao executar signUp.
- */
-export const authIsolatedClient = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-    detectSessionInUrl: false
-  }
-});
-
-/**
  * Retorna os membros cadastrados localmente
  */
 export function getMembrosLocais(): UserProfile[] {
@@ -478,9 +458,10 @@ export function addMembroEquipe(membro: Omit<UserProfile, 'id'> & { id?: string 
 }
 
 /**
- * Cadastra um novo membro / operador diretamente no Supabase Auth:
- * - Chama `supabase.auth.signUp` com o e-mail, senha e `user_metadata: { nome, cargo }`.
- * - Não desloga nem substitui a sessão do administrador atual.
+ * Cadastra um novo membro da equipe pela Edge Function `criar-membro`
+ * (supabase/functions/criar-membro). A função confere no servidor se quem
+ * chama é admin ativo e cria a conta + o perfil com a chave service_role,
+ * que nunca chega ao navegador.
  */
 export async function cadastrarNovoMembroSupabase({
   nome,
@@ -496,58 +477,31 @@ export async function cadastrarNovoMembroSupabase({
   role: UserRole;
 }): Promise<{ user?: any; error?: string }> {
   try {
-    if (email) removeInativo(email);
-
-    // 1. Chamar Supabase Auth SignUp passando os dados no user_metadata
-    const { data, error } = await authIsolatedClient.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          nome,
-          cargo,
-          role,
-          status: 'ativo',
-          ativo: true
-        }
-      }
+    const { data, error } = await supabase.functions.invoke('criar-membro', {
+      body: { nome, email, password, role }
     });
 
     if (error) {
-      return { error: error.message };
+      let msg = error.message;
+      try {
+        const detalhe = await (error as any).context?.json?.();
+        if (detalhe?.error) msg = detalhe.error;
+      } catch {}
+      if (/failed to send|not found|404/i.test(msg)) {
+        msg = 'A função de cadastro (criar-membro) não está publicada no Supabase.';
+      }
+      return { error: msg };
     }
 
-    const newId = data.user?.id || `user-${Date.now()}`;
-    const newMember: UserProfile = {
-      id: newId,
-      email,
-      nome,
-      role,
-      cargo,
-      status: 'ativo',
-      ativo: true
-    };
+    const newId = data?.user?.id;
+    if (email) removeInativo(email);
+    // Guarda nome/e-mail/cargo do operador para exibição na lista da equipe
+    // (a tabela profiles não possui coluna de e-mail).
+    saveMembroLocal({ id: newId, email, nome, role, cargo, status: 'ativo', ativo: true });
 
-    // 2. Persistir na lista da equipe para consulta imediata
-    saveMembroLocal(newMember);
-
-    // 3. Tentar registrar na tabela profiles se acessível
-    try {
-      await supabase.from('profiles').insert([
-        {
-          id: newId,
-          nome,
-          role: mapCargoToEnumRole(role),
-          cargo: mapRoleToCargoFormatado(cargo || role)
-        }
-      ]);
-    } catch {
-      // Ignora erro de inserção direta se tabela tiver RLS
-    }
-
-    return { user: data.user || newMember };
+    return { user: data?.user };
   } catch (err: any) {
-    return { error: err?.message || 'Erro inesperado ao cadastrar operador no Supabase.' };
+    return { error: err?.message || 'Erro inesperado ao cadastrar operador.' };
   }
 }
 
@@ -768,159 +722,24 @@ export async function resolveEmailFromUsername(input: string): Promise<string | 
   if (!trimmed) return null;
   if (trimmed.includes('@')) return trimmed.toLowerCase();
 
-  const norm = normalizeText(trimmed);
-  const noSpaces = norm.replace(/\s+/g, '');
-  const withDots = norm.replace(/\s+/g, '.');
-  const words = norm.split(/\s+/).filter(Boolean);
-  const firstWord = words[0] || '';
-
-  // 1. Caso especial: "visitante" (com acentos, espaços ou maiúsculas/minúsculas)
-  // Garante a resolução imediata para visitante@larharmonia.org
-  if (noSpaces === 'visitante' || firstWord === 'visitante') {
+  // Atalho da demonstração pública
+  if (normalizeText(trimmed).replace(/\s+/g, '') === 'visitante') {
     return 'visitante@larharmonia.org';
   }
 
-  // 2. Busca insensível a maiúsculas/minúsculas (ilike) na tabela 'profiles' do Supabase
-  // nos campos 'nome' e 'email'
+  // A tabela profiles não é legível sem login (RLS). A função
+  // resolver_login (security definer) devolve apenas o e-mail de quem tiver
+  // correspondência EXATA com o prefixo do e-mail ou o nome completo.
   try {
-    const cleanSearch = trimmed.replace(/[%_,]/g, '');
-
-    // Busca ampla com ilike em 'nome' OU 'email'
-    const { data: profiles, error } = await supabase
-      .from('profiles')
-      .select('id, nome, email, cargo, role, status, ativo')
-      .or(`nome.ilike.%${cleanSearch}%,email.ilike.%${cleanSearch}%`)
-      .limit(30);
-
-    if (!error && profiles && profiles.length > 0) {
-      // a) Prefixo exato do e-mail (ex: "ana" para "ana@larharmonia.org")
-      const byEmailPrefix = profiles.find((p) => {
-        if (!p.email) return false;
-        const prefix = normalizeText(p.email.split('@')[0]);
-        return prefix === norm || prefix === noSpaces || prefix === withDots;
-      });
-      if (byEmailPrefix?.email) return byEmailPrefix.email.toLowerCase();
-
-      // b) Nome completo exato normalizado (ex: "Maria Silva" ou "maria silva")
-      const byFullName = profiles.find((p) => {
-        if (!p.nome) return false;
-        const pNorm = normalizeText(p.nome);
-        return (
-          pNorm === norm ||
-          pNorm.replace(/\s+/g, '') === noSpaces ||
-          pNorm.replace(/\s+/g, '.') === withDots
-        );
-      });
-      if (byFullName?.email) return byFullName.email.toLowerCase();
-
-      // c) Primeiro nome (ex: "Maria" para perfil com nome "Maria Silva")
-      const byFirstName = profiles.find((p) => {
-        if (!p.nome) return false;
-        const pFirst = normalizeText(p.nome).split(/\s+/)[0];
-        return pFirst === firstWord || pFirst === norm;
-      });
-      if (byFirstName?.email) return byFirstName.email.toLowerCase();
-
-      // d) Substring no nome ou e-mail
-      const bySubstring = profiles.find((p) => {
-        const pNome = p.nome ? normalizeText(p.nome) : '';
-        const pEmail = p.email ? normalizeText(p.email) : '';
-        return (
-          pNome.includes(norm) ||
-          pEmail.includes(norm) ||
-          (firstWord.length >= 3 && pNome.includes(firstWord))
-        );
-      });
-      if (bySubstring?.email) return bySubstring.email.toLowerCase();
-
-      // e) Se algum perfil encontrado possui e-mail cadastrado
-      for (const p of profiles) {
-        if (p.email) return p.email.toLowerCase();
-      }
+    const { data, error } = await supabase.rpc('resolver_login', { identificador: trimmed });
+    if (error) {
+      console.warn('Função resolver_login indisponível:', error.message);
+      return null;
     }
-
-    // Se o usuário digitou nome composto ou sobrenome e a consulta inicial não encontrou,
-    // tenta busca específica no campo 'nome' pelo primeiro nome
-    if (firstWord && firstWord !== norm && firstWord.length >= 3) {
-      const { data: firstProfiles } = await supabase
-        .from('profiles')
-        .select('id, nome, email, cargo, role, status, ativo')
-        .ilike('nome', `%${firstWord}%`)
-        .limit(10);
-
-      if (firstProfiles && firstProfiles.length > 0) {
-        const match = firstProfiles.find((p) => {
-          if (!p.nome) return false;
-          const pFirst = normalizeText(p.nome).split(/\s+/)[0];
-          return pFirst === firstWord;
-        });
-        if (match?.email) return match.email.toLowerCase();
-        if (firstProfiles[0]?.email) return firstProfiles[0].email.toLowerCase();
-      }
-    }
-  } catch (err) {
-    console.warn('Erro ao consultar profiles via ilike no Supabase:', err);
-  }
-
-  // 3. Consultar lista e diretório de membros da equipe no armazenamento local/memória
-  try {
-    const equipe = await getEquipeList(undefined, true);
-
-    // a. Prefixo exato do e-mail
-    const byPrefix = equipe.find((m) => {
-      if (!m.email) return false;
-      const prefix = normalizeText(m.email.split('@')[0]);
-      return prefix === norm || prefix === noSpaces;
-    });
-    if (byPrefix?.email) return byPrefix.email.toLowerCase();
-
-    // b. Correspondência de nome completo (com ou sem acentos)
-    const byExactName = equipe.find(
-      (m) => m.nome && normalizeText(m.nome) === norm
-    );
-    if (byExactName?.email) return byExactName.email.toLowerCase();
-
-    // c. Correspondência sem espaços
-    const byNormalizedName = equipe.find((m) => {
-      if (!m.nome) return false;
-      const clean = normalizeText(m.nome).replace(/\s+/g, '');
-      return clean === noSpaces || clean === norm;
-    });
-    if (byNormalizedName?.email) return byNormalizedName.email.toLowerCase();
-
-    // d. Primeiro nome (ex: "Maria", "Visitante")
-    const byFirstName = equipe.find((m) => {
-      if (!m.nome) return false;
-      const pFirst = normalizeText(m.nome).split(/\s+/)[0];
-      return pFirst === firstWord || pFirst === norm;
-    });
-    if (byFirstName?.email) return byFirstName.email.toLowerCase();
-
-    // e. Substring no nome
-    const bySubstring = equipe.find(
-      (m) => m.nome && normalizeText(m.nome).includes(norm)
-    );
-    if (bySubstring?.email) return bySubstring.email.toLowerCase();
+    return typeof data === 'string' && data ? data.toLowerCase() : null;
   } catch {
-    // Continua para próxima tentativa se equipe falhar
+    return null;
   }
-
-  // 4. Identificadores de administração comuns
-  if (
-    ['admin', 'administrador', 'diretoria', 'diretor', 'gabriel'].includes(noSpaces) ||
-    ['admin', 'administrador'].includes(firstWord)
-  ) {
-    const admin = getMembrosLocais().find((m) => m.role === 'admin' && m.email);
-    if (admin?.email) return admin.email.toLowerCase();
-    return 'gabriel.costaoliveira77@gmail.com';
-  }
-
-  // 5. Se for um handle simples (ex: "recepcao", "ana", "social"), tentar no domínio institucional
-  if (/^[a-zA-Z0-9._-]+$/.test(withDots)) {
-    return `${withDots}@larharmonia.org`;
-  }
-
-  return null;
 }
 
 /**
@@ -1374,7 +1193,7 @@ export async function getOperadorProfileById(
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, nome, cargo, role, email')
+      .select('id, nome, cargo, role')
       .eq('id', cleanId)
       .maybeSingle();
 
