@@ -20,7 +20,6 @@ end $$;
 
 alter table public.assistidos  enable row level security;
 alter table public.profiles    enable row level security;
-alter table public.voluntarios enable row level security;
 
 -- 3) assistidos --------------------------------------------------------
 create policy assistidos_select on public.assistidos
@@ -40,23 +39,33 @@ create policy assistidos_delete on public.assistidos
   for delete to authenticated
   using (public.papel_atual() = 'admin');
 
--- 4) voluntarios -------------------------------------------------------
-create policy voluntarios_select on public.voluntarios
-  for select to authenticated
-  using (public.papel_atual() is not null);
+-- 4) voluntarios (pulado se a tabela não existir neste projeto) -------
+do $$
+begin
+  if to_regclass('public.voluntarios') is null then
+    raise notice 'Tabela public.voluntarios não existe; etapa pulada.';
+    return;
+  end if;
 
-create policy voluntarios_insert on public.voluntarios
-  for insert to authenticated
-  with check (public.papel_atual() is not null);
+  execute 'alter table public.voluntarios enable row level security';
 
-create policy voluntarios_update on public.voluntarios
-  for update to authenticated
-  using (public.papel_atual() is not null)
-  with check (public.papel_atual() is not null);
+  execute $p$create policy voluntarios_select on public.voluntarios
+    for select to authenticated
+    using (public.papel_atual() is not null)$p$;
 
-create policy voluntarios_delete on public.voluntarios
-  for delete to authenticated
-  using (public.papel_atual() = 'admin');
+  execute $p$create policy voluntarios_insert on public.voluntarios
+    for insert to authenticated
+    with check (public.papel_atual() is not null)$p$;
+
+  execute $p$create policy voluntarios_update on public.voluntarios
+    for update to authenticated
+    using (public.papel_atual() is not null)
+    with check (public.papel_atual() is not null)$p$;
+
+  execute $p$create policy voluntarios_delete on public.voluntarios
+    for delete to authenticated
+    using (public.papel_atual() = 'admin')$p$;
+end $$;
 
 -- 5) profiles ----------------------------------------------------------
 -- O próprio perfil continua legível mesmo inativo, para o app conseguir

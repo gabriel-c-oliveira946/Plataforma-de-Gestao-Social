@@ -45,8 +45,17 @@ create schema if not exists demo_seed;
 
 drop table if exists demo_seed.assistidos;
 drop table if exists demo_seed.voluntarios;
-create table demo_seed.assistidos  as table public.assistidos;
-create table demo_seed.voluntarios as table public.voluntarios;
+create table demo_seed.assistidos as table public.assistidos;
+alter table demo_seed.assistidos enable row level security;
+
+-- voluntarios só é copiada se existir neste projeto
+do $$
+begin
+  if to_regclass('public.voluntarios') is not null then
+    execute 'create table demo_seed.voluntarios as table public.voluntarios';
+    execute 'alter table demo_seed.voluntarios enable row level security';
+  end if;
+end $$;
 
 create or replace function demo_seed.restaurar()
 returns void
@@ -55,8 +64,11 @@ as $$
 begin
   delete from public.assistidos;
   insert into public.assistidos select * from demo_seed.assistidos;
-  delete from public.voluntarios;
-  insert into public.voluntarios select * from demo_seed.voluntarios;
+  if to_regclass('public.voluntarios') is not null
+     and to_regclass('demo_seed.voluntarios') is not null then
+    execute 'delete from public.voluntarios';
+    execute 'insert into public.voluntarios select * from demo_seed.voluntarios';
+  end if;
 end;
 $$;
 
