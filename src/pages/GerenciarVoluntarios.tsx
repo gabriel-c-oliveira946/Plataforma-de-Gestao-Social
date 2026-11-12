@@ -44,7 +44,7 @@ import {
 } from 'lucide-react';
 
 export default function GerenciarVoluntarios() {
-  const { user } = useAuth();
+  const { user, canEdit, canDelete } = useAuth();
   const toast = useToast();
 
   const [voluntarios, setVoluntarios] = useState<Voluntario[]>([]);
@@ -660,6 +660,8 @@ export default function GerenciarVoluntarios() {
                     </button>
 
                     <div className="flex items-center gap-1">
+                      {canEdit && (
+                        <>
                       <button
                         type="button"
                         onClick={() => handleOpenEditModal(vol)}
@@ -682,6 +684,10 @@ export default function GerenciarVoluntarios() {
                         <UserCheck className="w-3.5 h-3.5" />
                       </button>
 
+                        </>
+                      )}
+
+                      {canDelete && (
                       <button
                         type="button"
                         onClick={() => handleDeleteVoluntario(vol.id, vol.nome_completo)}
@@ -691,6 +697,7 @@ export default function GerenciarVoluntarios() {
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1231,6 +1238,7 @@ export default function GerenciarVoluntarios() {
 
             {/* Rodapé da Ficha */}
             <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/60">
+              {canEdit ? (
               <button
                 type="button"
                 onClick={() => {
@@ -1243,6 +1251,9 @@ export default function GerenciarVoluntarios() {
                 <Edit2 className="w-3.5 h-3.5" />
                 <span>Editar Ficha</span>
               </button>
+              ) : (
+                <span />
+              )}
 
               <button
                 type="button"
