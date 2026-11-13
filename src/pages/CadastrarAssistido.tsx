@@ -31,6 +31,7 @@ import { TabMoradiaFamilia } from '../components/cadastro/TabMoradiaFamilia';
 import { TabVulnerabilidades } from '../components/cadastro/TabVulnerabilidades';
 import { pendenciaQuadroResumo } from '../utils/familia';
 import { TabMotivacoes } from '../components/cadastro/TabMotivacoes';
+import { invalidarResumosPessoas } from '../utils/vinculoPessoas';
 
 export default function CadastrarAssistido() {
   const { user } = useAuth();
@@ -604,6 +605,7 @@ export default function CadastrarAssistido() {
 
       // Execução única e exclusiva na Aba 5
       await assistidosService.insert(payload);
+      invalidarResumosPessoas();
 
       toast.success('Assistido cadastrado com sucesso!', `${formData.nome_completo} foi registrado no sistema.`);
       setSuccessData({

@@ -78,11 +78,12 @@ As regras de acesso ficam no banco, não na tela. Em um projeto novo, no **SQL E
 3. `supabase/migrations/20261112_03_resolver_login.sql`: login por nome de usuário sem expor a tabela de perfis.
 4. `supabase/migrations/20261112_04_voluntarios_hierarquia.sql`: voluntários seguem a mesma hierarquia (Recepção cadastra e consulta, sem editar).
 5. `supabase/migrations/20261113_05_sexo_programas.sql`: campos de sexo e programas da família, usados no Quadro Resumo.
+6. `supabase/migrations/20261113_06_colunas_assistidos.sql`: garante todas as colunas que o cadastro grava (cria só as que faltam).
 
 Cadastro de membros da equipe:
 
-6. Publique a Edge Function `supabase/functions/criar-membro` (Dashboard → Edge Functions → Deploy a new function → Via Editor, nome `criar-membro`, colar o arquivo `index.ts`).
-7. Depois de testar o cadastro de um membro pela tela de equipe, **desligue** *Authentication → Sign In / Providers → Allow new users to sign up*.
+7. Publique a Edge Function `supabase/functions/criar-membro` (Dashboard → Edge Functions → Deploy a new function → Via Editor, nome `criar-membro`, colar o arquivo `index.ts`).
+8. Depois de testar o cadastro de um membro pela tela de equipe, **desligue** *Authentication → Sign In / Providers → Allow new users to sign up*.
 
 Projeto de demonstração: rode também `supabase/demo/protecao_demo.sql` (protege a conta pública `visitante` e restaura os dados de exemplo diariamente) e `supabase/demo/voluntarios_demo.sql` (tabela de voluntários com dados fictícios).
 

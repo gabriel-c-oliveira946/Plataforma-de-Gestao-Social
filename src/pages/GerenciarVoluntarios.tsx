@@ -42,6 +42,8 @@ import {
   Building2,
   Printer
 } from 'lucide-react';
+import { AvisoCpf, SeloOutroModulo } from '../components/vinculo/VinculoCpf';
+import { cpfDigitos, invalidarResumosPessoas, usePessoasPorCpf } from '../utils/vinculoPessoas';
 
 export default function GerenciarVoluntarios() {
   const { user, canEdit, canDelete } = useAuth();
@@ -83,6 +85,12 @@ export default function GerenciarVoluntarios() {
 
   const [customSkillInput, setCustomSkillInput] = useState<string>('');
   const [formError, setFormError] = useState<string | null>(null);
+  // Cruzamento por CPF com a base de assistidos (recarrega quando a lista muda)
+  const pessoasPorCpf = usePessoasPorCpf(voluntarios);
+  const tambemAssistido = (cpf?: string | null) => {
+    const chave = cpfDigitos(cpf);
+    return chave ? pessoasPorCpf.assistidos.get(chave) : undefined;
+  };
 
   // Carrega voluntários
   const loadVoluntarios = async () => {
@@ -179,10 +187,12 @@ export default function GerenciarVoluntarios() {
       if (editingVoluntario) {
         const updated = await voluntariosService.update(editingVoluntario.id, payload);
         setVoluntarios((prev) => prev.map((v) => (v.id === updated.id ? updated : v)));
+        invalidarResumosPessoas();
         toast.success('Voluntário atualizado', `${updated.nome_completo} foi alterado com sucesso.`);
       } else {
         const created = await voluntariosService.insert(payload);
         setVoluntarios((prev) => [created, ...prev]);
+        invalidarResumosPessoas();
         toast.success('Voluntário cadastrado', `${created.nome_completo} registrado na Fundação Lar Harmonia.`);
       }
 
@@ -568,6 +578,14 @@ export default function GerenciarVoluntarios() {
                           <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                             {vol.profissao_formacao || 'Profissão não informada'}
                           </p>
+                          {tambemAssistido(vol.cpf) && (
+                            <div className="mt-1">
+                              <SeloOutroModulo
+                                tipoAtual="voluntario"
+                                titulo={`Ficha de assistido: ${tambemAssistido(vol.cpf)!.map((a) => a.nome).join(', ')}`}
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -792,6 +810,22 @@ export default function GerenciarVoluntarios() {
                       className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                     />
                   </div>
+
+                  <AvisoCpf
+                    className="sm:col-span-12"
+                    cpf={formData.cpf}
+                    tipoAtual="voluntario"
+                    idAtual={editingVoluntario?.id}
+                    onUsarDados={(p) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        nome_completo: prev.nome_completo?.trim() ? prev.nome_completo : p.nome,
+                        data_nascimento: prev.data_nascimento || p.data_nascimento || '',
+                        celular: prev.celular || (p.telefone ? formatTelefone(p.telefone) : ''),
+                        endereco: prev.endereco || p.endereco || ''
+                      }))
+                    }
+                  />
 
                   <div className="sm:col-span-4">
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -1103,6 +1137,11 @@ export default function GerenciarVoluntarios() {
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     {viewingVoluntario.profissao_formacao || 'Voluntário Apoiador'}
                   </p>
+                  {tambemAssistido(viewingVoluntario.cpf) && (
+                    <div className="mt-1">
+                      <SeloOutroModulo tipoAtual="voluntario" />
+                    </div>
+                  )}
                 </div>
               </div>
 
