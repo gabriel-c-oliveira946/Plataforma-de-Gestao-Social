@@ -10,7 +10,8 @@ export interface ItemCondicaoSaude {
 export interface MembroFamilia {
   id?: string;
   nome_membro: string;
-  data_nasc_idade: string;
+  data_nasc_idade: string; // data de nascimento (AAAA-MM-DD); cadastros antigos podem ter texto livre
+  sexo?: 'Feminino' | 'Masculino' | '';
   vinculo: 'Filho(a)' | 'Neto(a)' | 'Sobrinho(a)' | 'Cônjuge' | 'Mãe/Pai' | 'Outro' | string;
   projeto_oficina: 'Crescer Preciso' | 'Balé' | 'Capoeira' | 'Informática' | 'Nenhuma / Não Participa' | 'Outro' | string;
   outro_vinculo?: string;
@@ -43,7 +44,9 @@ export interface CadastroFormData {
   rg: string;
   cpf: string;
   cartao_sus: string;
-  autoriza_imagem: 'Sim' | 'Não' | string;
+  sexo: 'Feminino' | 'Masculino' | '';
+  programas: string[]; // Programas da FLH em que a família está inserida
+  autoriza_imagem: 'Sim' | 'Não' | '';
   telefone: string;
   escolaridade: string;
   estado_civil: string;
@@ -163,7 +166,9 @@ export const INITIAL_CADASTRO_FORM: CadastroFormData = {
   rg: '',
   cpf: '',
   cartao_sus: '',
-  autoriza_imagem: 'Sim',
+  sexo: '',
+  programas: [],
+  autoriza_imagem: '',
   telefone: '',
   escolaridade: 'Não informado',
   estado_civil: 'Não informado',

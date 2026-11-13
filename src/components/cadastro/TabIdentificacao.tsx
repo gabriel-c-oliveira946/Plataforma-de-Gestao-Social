@@ -19,6 +19,7 @@ import {
   STATUS_ACOMPANHAMENTO_OPCOES
 } from '../../types/cadastro';
 import { formatCPF, formatRG, formatTelefone, handleIntegerKeyDown } from '../../utils/masks';
+import { PROGRAMAS_FLH, SEXOS } from '../../utils/familia';
 
 interface TabIdentificacaoProps {
   formData: CadastroFormData;
@@ -251,7 +252,7 @@ export const TabIdentificacao: React.FC<TabIdentificacaoProps> = ({
           </div>
 
           {/* Telefone */}
-          <div className="md:col-span-4">
+          <div className="md:col-span-3">
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5 flex items-center gap-1">
               <Phone className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
               Telefone / WhatsApp
@@ -268,8 +269,29 @@ export const TabIdentificacao: React.FC<TabIdentificacaoProps> = ({
             />
           </div>
 
+          {/* Sexo (usado no Quadro Resumo por faixa etária e sexo) */}
+          <div className="md:col-span-3">
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+              Sexo <span className="text-red-600">*</span>
+            </label>
+            <select
+              value={formData.sexo}
+              onChange={(e) => setFormData({ ...formData, sexo: e.target.value as CadastroFormData['sexo'] })}
+              className={`w-full px-4 py-2.5 rounded-lg border text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-600 outline-none transition bg-white dark:bg-slate-700 ${
+                formData.sexo ? 'border-slate-300 dark:border-slate-600' : 'border-amber-400 dark:border-amber-600'
+              }`}
+            >
+              <option value="">Selecione...</option>
+              {SEXOS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Escolaridade */}
-          <div className="md:col-span-4">
+          <div className="md:col-span-3">
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
               Escolaridade
             </label>
@@ -287,7 +309,7 @@ export const TabIdentificacao: React.FC<TabIdentificacaoProps> = ({
           </div>
 
           {/* Estado Civil */}
-          <div className="md:col-span-4">
+          <div className="md:col-span-3">
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
               Estado Civil
             </label>
@@ -305,7 +327,7 @@ export const TabIdentificacao: React.FC<TabIdentificacaoProps> = ({
           </div>
 
           {/* Raça / Cor */}
-          <div className="md:col-span-4">
+          <div className="md:col-span-3">
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
               Raça / Cor
             </label>
@@ -340,7 +362,7 @@ export const TabIdentificacao: React.FC<TabIdentificacaoProps> = ({
                 <input
                   type="radio"
                   name="autoriza_imagem"
-                  checked={formData.autoriza_imagem !== 'Não'}
+                  checked={formData.autoriza_imagem === 'Sim'}
                   onChange={() => setFormData({ ...formData, autoriza_imagem: 'Sim' })}
                   className="text-emerald-600 focus:ring-emerald-500 w-4 h-4"
                 />
@@ -356,6 +378,47 @@ export const TabIdentificacao: React.FC<TabIdentificacaoProps> = ({
                 />
                 Não autorizo
               </label>
+            </div>
+            {!formData.autoriza_imagem && (
+              <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+                Pergunte à pessoa e marque uma opção. Nada vem marcado por padrão.
+              </p>
+            )}
+          </div>
+
+          {/* Programas da FLH em que a família está inserida */}
+          <div className="md:col-span-12 p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2">
+            <span className="block text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+              Programas da FLH em que a família está inserida <span className="text-red-600">*</span>
+            </span>
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              Usado no Quadro Resumo (prestação de contas). Marque todos os que se aplicam.
+            </p>
+            <div className="flex flex-wrap gap-x-6 gap-y-2 pt-1">
+              {PROGRAMAS_FLH.map((programa) => {
+                const marcado = (formData.programas || []).includes(programa);
+                return (
+                  <label
+                    key={programa}
+                    className="inline-flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={marcado}
+                      onChange={() =>
+                        setFormData({
+                          ...formData,
+                          programas: marcado
+                            ? (formData.programas || []).filter((x) => x !== programa)
+                            : [...(formData.programas || []), programa]
+                        })
+                      }
+                      className="text-emerald-600 focus:ring-emerald-500 w-4 h-4 rounded"
+                    />
+                    {programa}
+                  </label>
+                );
+              })}
             </div>
           </div>
         </div>

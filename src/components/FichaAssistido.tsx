@@ -15,6 +15,13 @@ import {
   Pill,
   FileText
 } from 'lucide-react';
+import {
+  autorizacaoImagem,
+  descreverNascimentoMembro,
+  normalizarProgramas,
+  normalizarSexo,
+  rotuloAutorizacaoImagem
+} from '../utils/familia';
 
 export interface CondicaoSaudeImpressao {
   id: string;
@@ -229,9 +236,17 @@ export const FichaAssistido: React.FC<FichaAssistidoProps> = ({
             <div>
               <span className="text-slate-500 block text-[10px]">Autorização de Uso de Imagem:</span>
               <span className="font-semibold text-slate-800">
-                {assistido.autoriza_imagem === false || assistido.autoriza_imagem === 'Não'
-                  ? 'Não autorizado'
-                  : 'Autorizado institucionalmente'}
+                {rotuloAutorizacaoImagem(autorizacaoImagem(assistido as any))}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[10px]">Sexo:</span>
+              <span className="font-semibold text-slate-800">{normalizarSexo((assistido as any).sexo) || 'Não informado'}</span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[10px]">Programas da FLH:</span>
+              <span className="font-semibold text-slate-800">
+                {normalizarProgramas((assistido as any).programas).join(', ') || 'Não informado'}
               </span>
             </div>
             <div>
@@ -392,7 +407,7 @@ export const FichaAssistido: React.FC<FichaAssistidoProps> = ({
                   <thead className="bg-slate-100 text-slate-800 border-b border-slate-300">
                     <tr>
                       <th className="p-1 border-r border-slate-200 font-bold">Nome do Membro</th>
-                      <th className="p-1 border-r border-slate-200 w-24 font-bold">Idade / Nasc.</th>
+                      <th className="p-1 border-r border-slate-200 w-24 font-bold">Nascimento / Sexo</th>
                       <th className="p-1 border-r border-slate-200 w-28 font-bold">Vínculo</th>
                       <th className="p-1 w-36 font-bold">Projeto / Oficina</th>
                     </tr>
@@ -401,7 +416,7 @@ export const FichaAssistido: React.FC<FichaAssistidoProps> = ({
                     {membros.map((m, idx) => (
                       <tr key={m.id || idx}>
                         <td className="p-1 border-r border-slate-200 font-semibold">{m.nome_membro}</td>
-                        <td className="p-1 border-r border-slate-200">{m.data_nasc_idade}</td>
+                        <td className="p-1 border-r border-slate-200">{descreverNascimentoMembro(m.data_nasc_idade)}{m.sexo ? ` · ${m.sexo}` : ''}</td>
                         <td className="p-1 border-r border-slate-200">{m.vinculo}</td>
                         <td className="p-1 font-medium">{m.projeto_oficina}</td>
                       </tr>

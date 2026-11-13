@@ -26,6 +26,7 @@ import {
   PROJETOS_OFICINAS_FAMILIA
 } from '../../types/cadastro';
 import { handleIntegerKeyDown } from '../../utils/masks';
+import { SEXOS, descreverNascimentoMembro, idadeDoMembro, lerData, normalizarSexo } from '../../utils/familia';
 
 interface TabMoradiaFamiliaProps {
   formData: CadastroFormData;
@@ -47,8 +48,9 @@ export const TabMoradiaFamilia: React.FC<TabMoradiaFamiliaProps> = ({
   const [memberForm, setMemberForm] = useState<MembroFamilia>({
     nome_membro: '',
     data_nasc_idade: '',
+    sexo: '',
     vinculo: 'Filho(a)',
-    projeto_oficina: 'Crescer Preciso',
+    projeto_oficina: 'Nenhuma / Não Participa',
     outro_vinculo: '',
     outro_projeto: ''
   });
@@ -96,8 +98,9 @@ export const TabMoradiaFamilia: React.FC<TabMoradiaFamiliaProps> = ({
     setMemberForm({
       nome_membro: '',
       data_nasc_idade: '',
+      sexo: '',
       vinculo: 'Filho(a)',
-      projeto_oficina: 'Crescer Preciso',
+      projeto_oficina: 'Nenhuma / Não Participa',
       outro_vinculo: '',
       outro_projeto: ''
     });
@@ -112,8 +115,9 @@ export const TabMoradiaFamilia: React.FC<TabMoradiaFamiliaProps> = ({
       id: member.id,
       nome_membro: member.nome_membro || '',
       data_nasc_idade: member.data_nasc_idade || '',
+      sexo: normalizarSexo(member.sexo) || '',
       vinculo: member.vinculo || 'Filho(a)',
-      projeto_oficina: member.projeto_oficina || 'Crescer Preciso',
+      projeto_oficina: member.projeto_oficina || 'Nenhuma / Não Participa',
       outro_vinculo: member.outro_vinculo || '',
       outro_projeto: member.outro_projeto || ''
     });
@@ -125,6 +129,14 @@ export const TabMoradiaFamilia: React.FC<TabMoradiaFamiliaProps> = ({
     if (e) e.preventDefault();
     if (!memberForm.nome_membro.trim()) {
       setMemberError('Por favor, informe o Nome Completo do membro ou dependente.');
+      return;
+    }
+    if (!normalizarSexo(memberForm.sexo)) {
+      setMemberError('Informe o sexo do membro (usado no Quadro Resumo por faixa etária e sexo).');
+      return;
+    }
+    if (idadeDoMembro(memberForm.data_nasc_idade) === null) {
+      setMemberError('Informe a data de nascimento do membro (usada para calcular a faixa etária).');
       return;
     }
 
@@ -326,7 +338,7 @@ export const TabMoradiaFamilia: React.FC<TabMoradiaFamiliaProps> = ({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-12 gap-3.5 text-xs">
               {/* Nome Completo */}
-              <div className="sm:col-span-2 md:col-span-4 space-y-1.5">
+              <div className="sm:col-span-2 md:col-span-3 space-y-1.5">
                 <label className="block font-bold text-slate-800 dark:text-slate-200">
                   Nome Completo <span className="text-red-500">*</span>
                 </label>
@@ -340,24 +352,47 @@ export const TabMoradiaFamilia: React.FC<TabMoradiaFamiliaProps> = ({
                 />
               </div>
 
-              {/* Data Nasc ou Idade */}
+              {/* Data de Nascimento */}
               <div className="md:col-span-2 space-y-1.5">
                 <label className="block font-bold text-slate-800 dark:text-slate-200">
-                  Data Nasc. ou Idade
+                  Data de Nascimento <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="text"
-                  placeholder="Ex: 10 anos ou 12/03/2016"
-                  value={memberForm.data_nasc_idade}
+                  type="date"
+                  value={lerData(memberForm.data_nasc_idade) ? memberForm.data_nasc_idade : ''}
                   onChange={(e) => setMemberForm({ ...memberForm, data_nasc_idade: e.target.value })}
                   className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-emerald-600 outline-none"
                 />
+                {memberForm.data_nasc_idade && !lerData(memberForm.data_nasc_idade) && (
+                  <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                    Registro anterior: "{memberForm.data_nasc_idade}". Informe a data de nascimento.
+                  </p>
+                )}
+              </div>
+
+              {/* Sexo */}
+              <div className="md:col-span-2 space-y-1.5">
+                <label className="block font-bold text-slate-800 dark:text-slate-200">
+                  Sexo <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={memberForm.sexo || ''}
+                  onChange={(e) => setMemberForm({ ...memberForm, sexo: e.target.value as MembroFamilia['sexo'] })}
+                  className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-emerald-600 outline-none"
+                >
+                  <option value="">Selecione...</option>
+                  {SEXOS.map((sx) => (
+                    <option key={sx} value={sx}>
+                      {sx}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Vínculo */}
-              <div className="md:col-span-3 space-y-1.5">
+              <div className="md:col-span-2 space-y-1.5">
                 <label className="block font-bold text-slate-800 dark:text-slate-200">
-                  Vínculo com Responsável
+                  Vínculo
                 </label>
                 <select
                   value={memberForm.vinculo}
@@ -441,7 +476,8 @@ export const TabMoradiaFamilia: React.FC<TabMoradiaFamiliaProps> = ({
                 <tr>
                   <th className="px-4 py-2.5">Nome Completo</th>
                   <th className="px-3 py-2.5">Vínculo</th>
-                  <th className="px-3 py-2.5">Idade / Data Nasc.</th>
+                  <th className="px-3 py-2.5">Nascimento</th>
+                  <th className="px-3 py-2.5">Sexo</th>
                   <th className="px-3 py-2.5">Projeto / Oficina FLH</th>
                   <th className="px-3 py-2.5 text-right">Ações</th>
                 </tr>
@@ -472,7 +508,12 @@ export const TabMoradiaFamilia: React.FC<TabMoradiaFamiliaProps> = ({
                         </span>
                       </td>
                       <td className="px-3 py-3 font-medium text-slate-600 dark:text-slate-300">
-                        {membro.data_nasc_idade || 'Não informada'}
+                        {descreverNascimentoMembro(membro.data_nasc_idade)}
+                      </td>
+                      <td className="px-3 py-3 font-medium text-slate-600 dark:text-slate-300">
+                        {normalizarSexo(membro.sexo) || (
+                          <span className="text-amber-700 dark:text-amber-400 font-semibold">Não informado</span>
+                        )}
                       </td>
                       <td className="px-3 py-3">
                         <span
