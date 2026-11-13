@@ -68,13 +68,17 @@
 | `20261112_03_resolver_login.sql` | RPC `resolver_login`: login por nome de usuário sem expor `profiles` | rodado | **confirmar** |
 | `20261112_04_voluntarios_hierarquia.sql` | Recepção não edita voluntários | rodado | não se aplica* |
 | `20261113_05_sexo_programas.sql` | Colunas `sexo` e `programas` (+ `membros_familia`) | rodado | rodado |
-| `20261113_06_colunas_assistidos.sql` | Garante todas as colunas que o cadastro grava | **confirmar** | **confirmar** |
+| `20261113_06_colunas_assistidos.sql` | Garante todas as colunas que o cadastro grava | rodado | rodado |
 | `demo/protecao_demo.sql` | Protege o `visitante` e cria o reset diário (pg_cron 06:00 UTC) | não | rodado |
 | `demo/voluntarios_demo.sql` | Cria a tabela `voluntarios` com dados fictícios | não | rodado |
 
 \* Na demo, a hierarquia dos voluntários já é aplicada pelo `voluntarios_demo.sql`.
 
-> **Atenção:** o script 06 nasceu de um erro real no oficial ("Could not find the 'quantidade_filhos' column"). Se criar uma ficha ainda falhar, rode o 06. Ele pode ser rodado mais de uma vez sem problema.
+> O script 06 corrigiu um erro real no oficial ("Could not find the 'quantidade_filhos' column"). Se aparecer outro erro de coluna ausente, rode o 06 de novo: ele pode ser rodado mais de uma vez sem problema.
+
+**Configuração do Supabase oficial (confirmada em 13/11/2026):**
+- Edge Function `criar-membro` publicada.
+- Cadastro público desligado (*Allow new users to sign up* = off). Novas contas só são criadas pela Diretoria, na tela de equipe.
 
 ### Permissões (garantidas pelo banco)
 
@@ -140,9 +144,10 @@
 ## 7. Próximos passos
 
 ### Imediatos (o Gabriel faz)
-- [ ] Confirmar se o **script 06** foi rodado no oficial e na demo.
-- [ ] Confirmar se a **Edge Function `criar-membro`** foi publicada (nome exato, "Verify JWT" ligado). Testar o cadastro de um membro pela tela de equipe.
-- [ ] Depois disso, **desligar** *Authentication → Sign In / Providers → Allow new users to sign up* no projeto oficial.
+- [x] Script 06 rodado no oficial e na demo.
+- [x] Edge Function `criar-membro` publicada.
+- [x] Cadastro público desligado no projeto oficial.
+- [ ] Confirmar, no projeto **demo**, se o script 03 (`resolver_login`) foi rodado.
 - [ ] Completar 3 ou 4 fichas fictícias com sexo, programa e membros, para o Quadro Resumo mostrar números nas demonstrações.
 - [ ] Compartilhar com o Nadson o relatório técnico, criado como documento no Claude: "Plataforma Lar Harmonia — respostas técnicas ao Nadson". Ele está privado até ser compartilhado.
 
