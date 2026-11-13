@@ -432,9 +432,10 @@ function sanitizePayloadForSupabase(payload: Record<string, any>): Record<string
 
 function erroSupabase(acao: string, error: { message?: string; code?: string } | null): Error {
   console.error(`Erro ao ${acao} no Supabase:`, error);
-  if (error?.code === 'PGRST204' && /'(sexo|programas)'/.test(error.message || '')) {
+  const coluna = (error?.message || '').match(/Could not find the '([^']+)' column/)?.[1];
+  if (error?.code === 'PGRST204' && coluna) {
     return new Error(
-      'O banco de dados ainda não tem os campos de sexo/programas. Rode o script supabase/migrations/20261113_05_sexo_programas.sql no Supabase.'
+      `O banco de dados não tem a coluna "${coluna}". Rode o script supabase/migrations/20261113_06_colunas_assistidos.sql no SQL Editor do Supabase.`
     );
   }
   return new Error(error?.message || `Não foi possível ${acao}. Verifique sua conexão e tente novamente.`);
