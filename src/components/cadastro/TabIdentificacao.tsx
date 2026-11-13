@@ -20,6 +20,8 @@ import {
 } from '../../types/cadastro';
 import { formatCPF, formatRG, formatTelefone, handleIntegerKeyDown } from '../../utils/masks';
 import { PROGRAMAS_FLH, SEXOS } from '../../utils/familia';
+import { AvisoCpf } from '../vinculo/VinculoCpf';
+import { calcularIdade } from '../../utils/familia';
 
 interface TabIdentificacaoProps {
   formData: CadastroFormData;
@@ -27,6 +29,7 @@ interface TabIdentificacaoProps {
   fotoPreview: string | null;
   onFileSelect: (file: File) => void;
   onRemoveFoto: () => void;
+  assistidoId?: string; // na edição, para não acusar duplicidade com a própria ficha
 }
 
 export const TabIdentificacao: React.FC<TabIdentificacaoProps> = ({
@@ -34,7 +37,8 @@ export const TabIdentificacao: React.FC<TabIdentificacaoProps> = ({
   setFormData,
   fotoPreview,
   onFileSelect,
-  onRemoveFoto
+  onRemoveFoto,
+  assistidoId
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -250,6 +254,24 @@ export const TabIdentificacao: React.FC<TabIdentificacaoProps> = ({
               className="w-full px-4 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-emerald-600 outline-none transition"
             />
           </div>
+
+          {/* CPF já cadastrado (como voluntário ou em outra ficha de assistido) */}
+          <AvisoCpf
+            className="md:col-span-12"
+            cpf={formData.cpf}
+            tipoAtual="assistido"
+            idAtual={assistidoId}
+            onUsarDados={(p) =>
+              setFormData((prev) => ({
+                ...prev,
+                nome_completo: prev.nome_completo.trim() ? prev.nome_completo : p.nome,
+                data_nascimento: prev.data_nascimento || p.data_nascimento || '',
+                idade: prev.idade !== '' ? prev.idade : calcularIdade(p.data_nascimento) ?? '',
+                telefone: prev.telefone || (p.telefone ? formatTelefone(p.telefone) : ''),
+                endereco: prev.endereco || p.endereco || ''
+              }))
+            }
+          />
 
           {/* Telefone */}
           <div className="md:col-span-3">

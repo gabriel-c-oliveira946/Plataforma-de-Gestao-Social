@@ -460,6 +460,18 @@ export const assistidosService = {
     return (data || []).map(normalizeAssistido);
   },
 
+  // 1b. Resumo leve (sem fotos nem dados sensíveis) para cruzar pessoas por CPF
+  async listarResumos(): Promise<
+    { id: string; nome_completo: string; cpf?: string | null; data_nascimento?: string | null; telefone?: string | null; endereco?: string | null; bairro?: string | null }[]
+  > {
+    if (MODO_LOCAL) return getStoredAssistidos();
+    const { data, error } = await supabase
+      .from('assistidos')
+      .select('id, nome_completo, cpf, data_nascimento, telefone, endereco, bairro');
+    if (error) throw erroSupabase('consultar os assistidos', error);
+    return data || [];
+  },
+
   // 2. Inserir novo assistido
   async insert(item: Record<string, any>): Promise<Assistido> {
     const isProvidedIdValid = isValidUUID(item.id);

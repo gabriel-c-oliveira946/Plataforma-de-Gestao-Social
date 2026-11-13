@@ -154,6 +154,18 @@ export const voluntariosService = {
     return data || [];
   },
 
+  // 1b. Resumo leve para cruzar pessoas por CPF
+  async listarResumos(): Promise<
+    { id: string; nome_completo: string; cpf?: string | null; data_nascimento?: string | null; telefone?: string | null; celular?: string | null; email?: string | null; endereco?: string | null }[]
+  > {
+    if (MODO_LOCAL) return getStoredVoluntarios();
+    const { data, error } = await supabase
+      .from('voluntarios')
+      .select('id, nome_completo, cpf, data_nascimento, telefone, celular, email, endereco');
+    if (error) throw erroSupabase('consultar os voluntários', error);
+    return data || [];
+  },
+
   // 2. Inserir novo voluntário
   async insert(item: Record<string, any>): Promise<Voluntario> {
     const isProvidedIdValid = isValidUUID(item.id);

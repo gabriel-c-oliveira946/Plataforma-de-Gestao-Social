@@ -5,6 +5,7 @@ import { formatCPF, formatRG } from '../../utils/masks';
 import type { FichaBase } from './useVerFicha';
 import { pendenciaQuadroResumo } from '../../utils/familia';
 import type { FichaDerivados } from './derivados';
+import { invalidarResumosPessoas } from '../../utils/vinculoPessoas';
 
 /** Ações de salvamento: entrevista de 1 ano, edição completa e avaliação de 4 meses. */
 export function criarAcoesDeSalvamento(ctx: FichaBase & FichaDerivados) {
@@ -562,6 +563,7 @@ export function criarAcoesDeSalvamento(ctx: FichaBase & FichaDerivados) {
 
       // Executa o update com fallback seguro
       const updatedRecord = await assistidosService.update(assistido.id, payload);
+      invalidarResumosPessoas();
 
       onAssistidoUpdated(updatedRecord);
       setIsEditingData(false);

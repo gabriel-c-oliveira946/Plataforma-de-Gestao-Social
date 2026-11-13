@@ -49,6 +49,7 @@ export function EdicaoFicha({ ctx }: { ctx: FichaCtx }) {
                     fotoPreview={fotoPreview}
                     onFileSelect={handleFileSelect}
                     onRemoveFoto={handleRemoveFoto}
+                    assistidoId={assistido.id}
                   />
                 </div>
               )}

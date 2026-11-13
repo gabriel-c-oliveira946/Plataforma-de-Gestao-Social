@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { FichaCtx } from './useVerFicha';
 import { autorizacaoImagem } from '../../utils/familia';
+import { SeloOutroModuloPorCpf } from '../vinculo/VinculoCpf';
 
 /** Cabeçalho: foto, dados principais e ações rápidas. */
 export function CabecalhoFicha({ ctx }: { ctx: FichaCtx }) {
@@ -117,6 +118,7 @@ export function CabecalhoFicha({ ctx }: { ctx: FichaCtx }) {
                       </span>
                     );
                   })()}
+                  <SeloOutroModuloPorCpf cpf={assistido.cpf} tipoAtual="assistido" />
                   {isEditingData && (
                     <span className="px-2 py-0.5 bg-amber-600 text-white text-[9px] sm:text-[10px] font-black rounded-full uppercase tracking-wider shadow-2xs">
                       Modo Edição Ativo
