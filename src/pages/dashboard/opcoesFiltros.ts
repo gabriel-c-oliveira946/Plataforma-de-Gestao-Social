@@ -93,7 +93,8 @@ export const ANOS_LIST = [
 export const USO_IMAGEM_LIST = [
   'Todos os Termos',
   'Autoriza Imagem',
-  'NÃO Autoriza Imagem'
+  'NÃO Autoriza Imagem',
+  'Não Informado'
 ];
 
 export const FAIXA_ETARIA_LIST = [

@@ -1,4 +1,5 @@
 import { supabase, MODO_LOCAL } from '../lib/supabase/client';
+import { autorizacaoImagem } from '../utils/familia';
 import { Assistido } from '../components/VerFichaModal';
 
 const LOCAL_STORAGE_KEY = 'lar_harmonia_assistidos_store';
@@ -24,6 +25,8 @@ export const INITIAL_ASSISTIDOS: Assistido[] = [
   {
     id: 'ass-001',
     nome_completo: 'Maria Aparecida Santos de Jesus',
+    sexo: 'Feminino',
+    programas: ['Famílias Assistidas', 'Creche'],
     rg: '12.345.678-90',
     cpf: '123.456.789-01',
     data_nascimento: '1985-04-12',
@@ -43,21 +46,24 @@ export const INITIAL_ASSISTIDOS: Assistido[] = [
       {
         id: 'mem-001-1',
         nome_membro: 'Lucas Santos',
-        data_nasc_idade: '10 anos',
+        data_nasc_idade: '2016-03-14',
+        sexo: 'Masculino',
         vinculo: 'Filho(a)',
         projeto_oficina: 'Crescer Preciso'
       },
       {
         id: 'mem-001-2',
         nome_membro: 'Mariana Santos',
-        data_nasc_idade: '14 anos',
+        data_nasc_idade: '2012-07-02',
+        sexo: 'Feminino',
         vinculo: 'Filho(a)',
         projeto_oficina: 'Balé'
       },
       {
         id: 'mem-001-3',
         nome_membro: 'Pedro Henrique Santos',
-        data_nasc_idade: '6 anos',
+        data_nasc_idade: '2020-01-25',
+        sexo: 'Masculino',
         vinculo: 'Filho(a)',
         projeto_oficina: 'Capoeira'
       }
@@ -88,6 +94,8 @@ export const INITIAL_ASSISTIDOS: Assistido[] = [
   {
     id: 'ass-002',
     nome_completo: 'Carlos Eduardo Oliveira dos Santos',
+    sexo: 'Masculino',
+    programas: ['Integração ao M. do Trabalho'],
     rg: '23.456.789-01',
     cpf: '234.567.890-12',
     data_nascimento: '1998-08-23',
@@ -129,6 +137,8 @@ export const INITIAL_ASSISTIDOS: Assistido[] = [
   {
     id: 'ass-003',
     nome_completo: 'Francisca Pereira de Lima',
+    sexo: 'Feminino',
+    programas: ['Famílias Assistidas'],
     rg: '34.567.890-12',
     cpf: '345.678.901-23',
     data_nascimento: '1979-11-05',
@@ -148,28 +158,32 @@ export const INITIAL_ASSISTIDOS: Assistido[] = [
       {
         id: 'mem-003-1',
         nome_membro: 'Kauã Pereira de Lima',
-        data_nasc_idade: '12 anos',
+        data_nasc_idade: '2014-05-09',
+        sexo: 'Masculino',
         vinculo: 'Filho(a)',
         projeto_oficina: 'Informática'
       },
       {
         id: 'mem-003-2',
         nome_membro: 'Beatriz Pereira de Lima',
-        data_nasc_idade: '8 anos',
+        data_nasc_idade: '2018-02-11',
+        sexo: 'Feminino',
         vinculo: 'Filho(a)',
         projeto_oficina: 'Capoeira'
       },
       {
         id: 'mem-003-3',
         nome_membro: 'Matheus Pereira de Lima',
-        data_nasc_idade: '5 anos',
+        data_nasc_idade: '2021-06-30',
+        sexo: 'Masculino',
         vinculo: 'Filho(a)',
         projeto_oficina: 'Crescer Preciso'
       },
       {
         id: 'mem-003-4',
         nome_membro: 'José Roberto de Lima',
-        data_nasc_idade: '50 anos',
+        data_nasc_idade: '1976-04-03',
+        sexo: 'Masculino',
         vinculo: 'Cônjuge',
         projeto_oficina: 'Nenhuma / Não Participa'
       }
@@ -200,6 +214,8 @@ export const INITIAL_ASSISTIDOS: Assistido[] = [
   {
     id: 'ass-004',
     nome_completo: 'Antônio Marcos Ferreira',
+    sexo: 'Masculino',
+    programas: ['Integração ao M. do Trabalho'],
     rg: '45.678.901-23',
     cpf: '456.789.012-34',
     data_nascimento: '1992-02-18',
@@ -241,6 +257,8 @@ export const INITIAL_ASSISTIDOS: Assistido[] = [
   {
     id: 'ass-005',
     nome_completo: 'Luciana Barbosa da Silva',
+    sexo: 'Feminino',
+    programas: ['Gestantes'],
     rg: '56.789.012-34',
     cpf: '567.890.123-45',
     data_nascimento: '1990-09-14',
@@ -330,18 +348,7 @@ export function normalizeAssistido(item: Assistido): Assistido {
     }
   }
 
-  if (result.autoriza_imagem === undefined || result.autoriza_imagem === null || result.autoriza_imagem === '') {
-    if (result.expectativa_curso) {
-      const match = result.expectativa_curso.match(/(?:Autoriza[çc][ãa]o de Imagem|Uso de Imagem):\s*([^|]+)/i);
-      if (match && match[1]?.trim()) {
-        const val = match[1].trim().toLowerCase();
-        result.autoriza_imagem = val.includes('não') ? 'Não' : 'Sim';
-      }
-    }
-    if (result.autoriza_imagem === undefined || result.autoriza_imagem === null || result.autoriza_imagem === '') {
-      result.autoriza_imagem = 'Sim';
-    }
-  }
+  result.autoriza_imagem = autorizacaoImagem(result);
 
   if ((result as any).em_situacao_rua === undefined || (result as any).em_situacao_rua === null) {
     const tipoMor = (result.tipo_moradia || '').toLowerCase();
@@ -423,8 +430,13 @@ function sanitizePayloadForSupabase(payload: Record<string, any>): Record<string
   return clean;
 }
 
-function erroSupabase(acao: string, error: { message?: string } | null): Error {
+function erroSupabase(acao: string, error: { message?: string; code?: string } | null): Error {
   console.error(`Erro ao ${acao} no Supabase:`, error);
+  if (error?.code === 'PGRST204' && /'(sexo|programas)'/.test(error.message || '')) {
+    return new Error(
+      'O banco de dados ainda não tem os campos de sexo/programas. Rode o script supabase/migrations/20261113_05_sexo_programas.sql no Supabase.'
+    );
+  }
   return new Error(error?.message || `Não foi possível ${acao}. Verifique sua conexão e tente novamente.`);
 }
 

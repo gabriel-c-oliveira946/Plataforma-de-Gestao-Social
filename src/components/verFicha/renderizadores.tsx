@@ -11,6 +11,7 @@ import {
 import type { FichaBase } from './useVerFicha';
 import type { FichaDerivados } from './derivados';
 import type { FichaAcoes } from './acoesSalvamento';
+import { descreverNascimentoMembro } from '../../utils/familia';
 
 /** Trechos visuais reutilizados entre as abas (selos e resumos da família). */
 export function criarRenderizadores(ctx: FichaBase & FichaDerivados & FichaAcoes) {
@@ -154,7 +155,7 @@ export function criarRenderizadores(ctx: FichaBase & FichaDerivados & FichaAcoes
                       {membro.vinculo || 'Dependente'}
                     </span>
                     <span className="px-2 py-0.5 bg-indigo-50 text-indigo-900 rounded font-medium text-[10px] border border-indigo-200">
-                      {membro.data_nasc_idade || 'Idade N/I'}
+                      {descreverNascimentoMembro(membro.data_nasc_idade)}{membro.sexo ? ` · ${membro.sexo}` : ''}
                     </span>
                   </div>
                 </div>
@@ -269,7 +270,7 @@ export function criarRenderizadores(ctx: FichaBase & FichaDerivados & FichaAcoes
                     <span>{membro.nome_membro || 'Não informado'}</span>
                   </td>
                   <td className="py-2.5 px-3.5 text-gray-700 font-medium">
-                    {membro.data_nasc_idade || 'Não informada'}
+                    {descreverNascimentoMembro(membro.data_nasc_idade)}{membro.sexo ? ` · ${membro.sexo}` : ''}
                   </td>
                   <td className="py-2.5 px-3.5 text-gray-800 font-semibold">
                     {membro.vinculo || 'Não informado'}

@@ -7,6 +7,13 @@ import {
   getAssistidoMotivoEvasao,
   isPendenteAvaliacao4Meses
 } from './avaliacao4Meses';
+import {
+  autorizacaoImagem,
+  descreverNascimentoMembro,
+  normalizarProgramas,
+  normalizarSexo,
+  rotuloAutorizacaoImagem
+} from './familia';
 
 /**
  * Formata data no padrão brasileiro DD/MM/AAAA
@@ -78,6 +85,7 @@ export function exportAssistidosToCSV(assistidos: Assistido[]): {
     'CPF',
     'RG / Documento',
     'Número do Cartão SUS',
+    'Sexo',
     'Idade',
     'Data de Nascimento',
     'Cor / Raça / Etnia',
@@ -87,6 +95,8 @@ export function exportAssistidosToCSV(assistidos: Assistido[]): {
     'Bairro / Localidade',
     'Situação de Rua',
     'Autorização Uso de Imagem',
+    'Programas FLH',
+    'Total de Pessoas na Família (cadastradas)',
 
     // Acompanhamento
     'Data de Ingresso',
@@ -186,13 +196,10 @@ export function exportAssistidosToCSV(assistidos: Assistido[]): {
     const situacaoRua = isRua ? 'Sim' : 'Não';
 
     // 13. Autorização de Uso de Imagem
-    const autorizaImagemVal = (item as any).autoriza_imagem;
-    const isNaoAutorizado =
-      autorizaImagemVal === false ||
-      autorizaImagemVal === 'Não' ||
-      (item.expectativa_curso &&
-        /Autoriza[çc][ãa]o de Imagem:\s*Não/i.test(item.expectativa_curso));
-    const autorizaImagem = isNaoAutorizado ? 'Não autoriza' : 'Sim (Autorizado)';
+    const autorizaImagem = rotuloAutorizacaoImagem(autorizacaoImagem(item as any));
+    const sexo = normalizarSexo((item as any).sexo) || 'Não informado';
+    const programas = normalizarProgramas((item as any).programas).join(', ') || 'Não informado';
+    const totalPessoasFamilia = String(1 + (Array.isArray(item.membros_familia) ? item.membros_familia.length : 0));
 
     // 14. Data de Ingresso
     const dataIngresso = formatDate(item.data_ingresso || item.created_at);
@@ -282,10 +289,11 @@ export function exportAssistidosToCSV(assistidos: Assistido[]): {
               const nomeM = m.nome_membro || m.nome || 'Membro sem nome';
               const vinc = m.vinculo || m.parentesco || 'Familiar';
               const vincCompleto = vinc === 'Outro' && m.outro_vinculo ? `Outro: ${m.outro_vinculo}` : vinc;
-              const idadeNasc = m.data_nasc_idade ? ` - ${m.data_nasc_idade}` : '';
+              const idadeNasc = m.data_nasc_idade ? ` - ${descreverNascimentoMembro(m.data_nasc_idade)}` : '';
+              const sexoM = normalizarSexo(m.sexo) ? ` - ${normalizarSexo(m.sexo)}` : '';
               const proj = m.projeto_oficina || 'Não informado';
               const projCompleto = proj === 'Outro' && m.outro_projeto ? `Outro: ${m.outro_projeto}` : proj;
-              return `${nomeM} (${vincCompleto}${idadeNasc} - Projeto/Oficina: ${projCompleto})`;
+              return `${nomeM} (${vincCompleto}${idadeNasc}${sexoM} - Projeto/Oficina: ${projCompleto})`;
             })
             .join('; ')
         : 'Nenhum membro dependente cadastrado';
@@ -377,6 +385,7 @@ export function exportAssistidosToCSV(assistidos: Assistido[]): {
       escapeCSV(cpf),
       escapeCSV(rg),
       escapeCSV(cartaoSus),
+      escapeCSV(sexo),
       escapeCSV(idade),
       escapeCSV(dataNasc),
       escapeCSV(racaCor),
@@ -386,6 +395,8 @@ export function exportAssistidosToCSV(assistidos: Assistido[]): {
       escapeCSV(bairroLocalidade),
       escapeCSV(situacaoRua),
       escapeCSV(autorizaImagem),
+      escapeCSV(programas),
+      escapeCSV(totalPessoasFamilia),
       escapeCSV(dataIngresso),
       escapeCSV(statusAcompanhamento),
       escapeCSV(motivoEvasao),

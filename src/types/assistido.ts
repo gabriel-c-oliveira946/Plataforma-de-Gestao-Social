@@ -7,6 +7,8 @@ export interface Assistido {
   rg?: string | null;
   cpf?: string | null;
   cartao_sus?: string | null;
+  sexo?: string | null;
+  programas?: string[] | null;
   autoriza_imagem?: 'Sim' | 'Não' | boolean | string | null;
   data_nascimento?: string | null;
   idade?: number | string | null;

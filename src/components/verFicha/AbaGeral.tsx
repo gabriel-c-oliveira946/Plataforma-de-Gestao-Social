@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import type { Assistido } from './tipos';
 import type { FichaCtx } from './useVerFicha';
+import { autorizacaoImagem, rotuloAutorizacaoImagem } from '../../utils/familia';
 
 /** Aba "Visão Geral 360°". */
 export function AbaGeral({ ctx }: { ctx: FichaCtx }) {
@@ -232,9 +233,7 @@ export function AbaGeral({ ctx }: { ctx: FichaCtx }) {
                       <div>
                         <span className="text-gray-400 font-semibold block">Uso de Imagem / Voz:</span>
                         <span className="font-medium text-gray-800">
-                          {assistido.autoriza_imagem === false || assistido.autoriza_imagem === 'Não'
-                            ? 'Não autorizado'
-                            : 'Autorizado institucionalmente'}
+                          {rotuloAutorizacaoImagem(autorizacaoImagem(assistido))}
                         </span>
                       </div>
                       <div>

@@ -29,6 +29,7 @@ import { TabIdentificacao } from '../components/cadastro/TabIdentificacao';
 import { TabTrabalhoRenda } from '../components/cadastro/TabTrabalhoRenda';
 import { TabMoradiaFamilia } from '../components/cadastro/TabMoradiaFamilia';
 import { TabVulnerabilidades } from '../components/cadastro/TabVulnerabilidades';
+import { pendenciaQuadroResumo } from '../utils/familia';
 import { TabMotivacoes } from '../components/cadastro/TabMotivacoes';
 
 export default function CadastrarAssistido() {
@@ -186,6 +187,15 @@ export default function CadastrarAssistido() {
       lastTabChangeRef.current = Date.now();
       setActiveTab(1);
       setErrorMsg('O campo "Nome Completo" é obrigatório.');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    const pendencia = pendenciaQuadroResumo(formData);
+    if (pendencia) {
+      lastTabChangeRef.current = Date.now();
+      setActiveTab(pendencia.aba);
+      setErrorMsg(pendencia.mensagem);
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
@@ -453,7 +463,7 @@ export default function CadastrarAssistido() {
       if (formData.cartao_sus?.trim()) {
         expectativasList.push(`Cartão SUS: ${formData.cartao_sus.trim()}`);
       }
-      expectativasList.push(`Autorização de Imagem: ${formData.autoriza_imagem === 'Não' ? 'Não' : 'Sim'}`);
+      expectativasList.push(`Autorização de Imagem: ${formData.autoriza_imagem || 'Não informado'}`);
 
       if (Array.isArray(formData.membros_familia) && formData.membros_familia.length > 0) {
         expectativasList.push(`[Membros da Família: ${JSON.stringify(formData.membros_familia)}]`);
@@ -536,7 +546,9 @@ export default function CadastrarAssistido() {
         rg: cleanRg,
         cpf: cleanCpf,
         cartao_sus: formData.cartao_sus?.trim() || null,
-        autoriza_imagem: formData.autoriza_imagem === 'Sim' || (formData.autoriza_imagem as any) === true,
+        autoriza_imagem: formData.autoriza_imagem,
+        sexo: formData.sexo || null,
+        programas: formData.programas || [],
         em_situacao_rua: Boolean(formData.em_situacao_rua),
         data_nascimento: formData.data_nascimento || null,
         idade: formData.idade === '' ? null : Number(formData.idade),

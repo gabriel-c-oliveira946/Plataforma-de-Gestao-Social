@@ -1,5 +1,6 @@
 import { getAssistidoMotivoEvasao } from '../../utils/avaliacao4Meses';
 import { CadastroFormData } from '../../types/cadastro';
+import { autorizacaoImagem, normalizarProgramas, normalizarSexo } from '../../utils/familia';
 import type { Assistido } from './tipos';
 
 /**
@@ -399,13 +400,9 @@ export function convertAssistidoToFormData(assistido: Assistido): CadastroFormDa
         ? assistido.expectativa_curso.match(/Cart[ãa]o SUS:\s*([^|]+)/i)?.[1]?.trim()
         : null) ||
       '',
-    autoriza_imagem:
-      (assistido as any).autoriza_imagem === false ||
-      (assistido as any).autoriza_imagem === 'Não' ||
-      (assistido.expectativa_curso &&
-        /Autoriza[çc][ãa]o de Imagem:\s*Não/i.test(assistido.expectativa_curso))
-        ? 'Não'
-        : 'Sim',
+    sexo: normalizarSexo(assistido.sexo) || '',
+    programas: normalizarProgramas(assistido.programas),
+    autoriza_imagem: autorizacaoImagem(assistido),
     telefone: assistido.telefone || '',
     escolaridade: assistido.escolaridade || 'Não informado',
     estado_civil: assistido.estado_civil || 'Não informado',

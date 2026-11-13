@@ -12,6 +12,7 @@ import {
   ZoomIn
 } from 'lucide-react';
 import type { FichaCtx } from './useVerFicha';
+import { autorizacaoImagem } from '../../utils/familia';
 
 /** Cabeçalho: foto, dados principais e ações rápidas. */
 export function CabecalhoFicha({ ctx }: { ctx: FichaCtx }) {
@@ -91,29 +92,31 @@ export function CabecalhoFicha({ ctx }: { ctx: FichaCtx }) {
                   {renderStatusBadge(
                     isEditingData ? editFormData.status_atendimento : assistido.status_curso
                   )}
-                  {isEditingData ? (
-                    editFormData.autoriza_imagem === 'Não' || (editFormData.autoriza_imagem as any) === false ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-100 text-red-800 dark:bg-red-950/90 dark:text-red-300 rounded-full text-xs font-extrabold border border-red-300 dark:border-red-700 shadow-2xs">
-                        <span>🚫</span>
-                        <span>NÃO Autoriza Uso de Imagem</span>
+                  {(() => {
+                    const termo = isEditingData ? editFormData.autoriza_imagem : autorizacaoImagem(assistido);
+                    if (termo === 'Não') {
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-100 text-red-800 dark:bg-red-950/90 dark:text-red-300 rounded-full text-xs font-extrabold border border-red-300 dark:border-red-700 shadow-2xs">
+                          <span>🚫</span>
+                          <span>NÃO Autoriza Uso de Imagem</span>
+                        </span>
+                      );
+                    }
+                    if (termo === 'Sim') {
+                      return (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 rounded-full text-xs font-bold border border-emerald-300 dark:border-emerald-700 shadow-2xs">
+                          <span>📷</span>
+                          <span>Autoriza Uso de Imagem</span>
+                        </span>
+                      );
+                    }
+                    return (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 text-amber-900 dark:bg-amber-950/80 dark:text-amber-300 rounded-full text-xs font-bold border border-amber-300 dark:border-amber-700 shadow-2xs">
+                        <span>❔</span>
+                        <span>Uso de Imagem Não Informado</span>
                       </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 rounded-full text-xs font-bold border border-emerald-300 dark:border-emerald-700 shadow-2xs">
-                        <span>📷</span>
-                        <span>Autoriza Uso de Imagem</span>
-                      </span>
-                    )
-                  ) : (assistido.autoriza_imagem === 'Não' || assistido.autoriza_imagem === false || (assistido.expectativa_curso && /Autoriza[çc][ãa]o de Imagem:\s*Não/i.test(assistido.expectativa_curso))) ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-red-100 text-red-800 dark:bg-red-950/90 dark:text-red-300 rounded-full text-xs font-extrabold border border-red-300 dark:border-red-700 shadow-2xs">
-                      <span>🚫</span>
-                      <span>NÃO Autoriza Uso de Imagem</span>
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 rounded-full text-xs font-bold border border-emerald-300 dark:border-emerald-700 shadow-2xs">
-                      <span>📷</span>
-                      <span>Autoriza Uso de Imagem</span>
-                    </span>
-                  )}
+                    );
+                  })()}
                   {isEditingData && (
                     <span className="px-2 py-0.5 bg-amber-600 text-white text-[9px] sm:text-[10px] font-black rounded-full uppercase tracking-wider shadow-2xs">
                       Modo Edição Ativo

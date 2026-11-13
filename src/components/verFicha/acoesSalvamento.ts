@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase/client';
 import { assistidosService } from '../../services/assistidosService';
 import { formatCPF, formatRG } from '../../utils/masks';
 import type { FichaBase } from './useVerFicha';
+import { pendenciaQuadroResumo } from '../../utils/familia';
 import type { FichaDerivados } from './derivados';
 
 /** Ações de salvamento: entrevista de 1 ano, edição completa e avaliação de 4 meses. */
@@ -117,6 +118,14 @@ export function criarAcoesDeSalvamento(ctx: FichaBase & FichaDerivados) {
       if (!editFormData.nome_completo.trim()) {
         setEditActiveTab(1);
         setSaveErrorMsg('O campo "Nome Completo" é obrigatório.');
+        setSavingEdit(false);
+        return;
+      }
+
+      const pendencia = pendenciaQuadroResumo(editFormData);
+      if (pendencia) {
+        setEditActiveTab(pendencia.aba);
+        setSaveErrorMsg(pendencia.mensagem);
         setSavingEdit(false);
         return;
       }
@@ -358,7 +367,7 @@ export function criarAcoesDeSalvamento(ctx: FichaBase & FichaDerivados) {
       if (editFormData.cartao_sus?.trim()) {
         expectativasList.push(`Cartão SUS: ${editFormData.cartao_sus.trim()}`);
       }
-      expectativasList.push(`Autorização de Imagem: ${editFormData.autoriza_imagem === 'Não' ? 'Não' : 'Sim'}`);
+      expectativasList.push(`Autorização de Imagem: ${editFormData.autoriza_imagem || 'Não informado'}`);
 
       if (Array.isArray(editFormData.membros_familia) && editFormData.membros_familia.length > 0) {
         expectativasList.push(`[Membros da Família: ${JSON.stringify(editFormData.membros_familia)}]`);
@@ -473,7 +482,9 @@ export function criarAcoesDeSalvamento(ctx: FichaBase & FichaDerivados) {
         rg: cleanRg,
         cpf: cleanCpf,
         cartao_sus: editFormData.cartao_sus?.trim() || null,
-        autoriza_imagem: editFormData.autoriza_imagem === 'Sim' || (editFormData.autoriza_imagem as any) === true,
+        autoriza_imagem: editFormData.autoriza_imagem,
+        sexo: editFormData.sexo || null,
+        programas: editFormData.programas || [],
         em_situacao_rua: Boolean(editFormData.em_situacao_rua),
         data_nascimento: editFormData.data_nascimento || null,
         idade: editFormData.idade === '' ? null : Number(editFormData.idade),

@@ -14,6 +14,7 @@ import {
   getDiasIngresso
 } from '../../utils/avaliacao4Meses';
 import { getAssistidoFilhos, getAssistidoFaixaRenda } from '../../utils/camposAssistido';
+import { autorizacaoImagem } from '../../utils/familia';
 
 /** Estado, filtros, carregamento e ações do painel de assistidos. */
 export function useDashboard() {
@@ -484,14 +485,10 @@ export function useDashboard() {
 
       // 14. Filtro por Uso de Imagem
       if (filterUsoImagem !== 'Todos os Termos') {
-        const isNaoAutorizado =
-          item.autoriza_imagem === 'Não' ||
-          item.autoriza_imagem === false ||
-          (item.expectativa_curso &&
-            /Autoriza[çc][ãa]o de Imagem:\s*Não/i.test(item.expectativa_curso));
-
-        if (filterUsoImagem === 'Autoriza Imagem' && isNaoAutorizado) return false;
-        if (filterUsoImagem === 'NÃO Autoriza Imagem' && !isNaoAutorizado) return false;
+        const termo = autorizacaoImagem(item);
+        if (filterUsoImagem === 'Autoriza Imagem' && termo !== 'Sim') return false;
+        if (filterUsoImagem === 'NÃO Autoriza Imagem' && termo !== 'Não') return false;
+        if (filterUsoImagem === 'Não Informado' && termo !== '') return false;
       }
 
       // 15. Filtro por Faixa Etária (Cálculo Dinâmico da Idade Exata)
